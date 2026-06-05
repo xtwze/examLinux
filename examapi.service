@@ -1,0 +1,17 @@
+[Unit]
+Description=ExamApi .NET Web Application
+After=network.target
+
+[Service]
+WorkingDirectory=/var/www/app
+ExecStart=/usr/bin/dotnet /var/www/app/ExamApi.dll
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=examapi
+User=www-data
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+[Install]
+WantedBy=multi-user.target
