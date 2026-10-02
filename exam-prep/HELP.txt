@@ -1,12 +1,12 @@
 Linux зачёт — помощь при сбоях
 
 1. Permission denied при публикации в /var/www/app
-Не запускай весь dotnet publish от root. Из ~/app:
+Не запускай весь dotnet publish от root. Из ~/app/examLinux:
   dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
   sudo install -d -m 755 /var/www/app
   sudo cp -a "$HOME/exam-publish/." /var/www/app/
   sudo chown -R root:root /var/www/app
-  sudo chmod -R a+rX /var/www/app
+  sudo chmod 755 /var/www/app
 
 2. Сервис не работает или Nginx отвечает 502
   systemctl status examapi --no-pager
@@ -15,8 +15,8 @@ Linux зачёт — помощь при сбоях
   dotnet --list-runtimes
   ls -l /usr/bin/dotnet /var/www/app/ExamApi.dll
   sudo ss -ltnp | grep ':5000'
-Нужен Microsoft.AspNetCore.App 6.0.x. Один .NET Runtime без ASP.NET Core
-недостаточен, SDK 6 включает нужный runtime.
+Нужен Microsoft.AspNetCore.App 8.0.x. Один .NET Runtime без ASP.NET Core
+недостаточен, SDK 8 включает нужный runtime.
 Если занят 5000, останови свой ручной dotnet run через Ctrl+C.
 Не завершай неизвестный процесс, пока не выяснишь, кому он принадлежит.
 После исправления: sudo systemctl restart examapi.
@@ -34,12 +34,12 @@ Linux зачёт — помощь при сбоях
   sudo nginx -t
   sudo systemctl restart nginx
 
-4. apt не находит dotnet-sdk-6.0
+4. apt не находит dotnet-sdk-8.0
   cat /etc/os-release
   sudo apt update
-  apt-cache policy dotnet-sdk-6.0
-Для Ubuntu 22.04 пакет доступен в обновлениях Ubuntu; проверь ошибки
-apt update и подключение jammy-updates в источниках пакетов.
+  apt-cache policy dotnet-sdk-8.0
+Для Ubuntu 22.04 и 24.04 проверь ошибки apt update и подключение
+стандартных репозиториев Ubuntu.
 Если установлен другой выпуск Ubuntu или пакеты уже смешаны с Microsoft,
 не добавляй наугад чужой репозиторий 22.04. Сначала выясни выпуск/источники.
 Документация: https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-decision
@@ -61,7 +61,7 @@ apt update и подключение jammy-updates в источниках па�
 6. curl / и /swagger возвращает 404
 Это ожидаемо: у приложения нет маршрута /, а Swagger включён только
 в Development. Для сдачи используй /api/health и /api/products.
-Для тренировки Swagger из ~/app:
+Для тренировки Swagger из ~/app/examLinux:
   ASPNETCORE_ENVIRONMENT=Development dotnet run --urls http://127.0.0.1:5001
 Затем в самой VM открой http://127.0.0.1:5001/swagger.
 В Production Swagger для задания не нужен.
@@ -86,13 +86,13 @@ apt update и подключение jammy-updates в источниках па�
 Bridged/«Сетевой мост» тоже возможен, но зависит от сети аудитории.
 
 8. Повторное развёртывание своего проекта
-Из ~/app сначала собери новый Release в домашнюю папку:
+Из ~/app/examLinux сначала собери новый Release в домашнюю папку:
   dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
 Только после успешной сборки:
   sudo systemctl stop examapi
   sudo cp -a "$HOME/exam-publish/." /var/www/app/
   sudo chown -R root:root /var/www/app
-  sudo chmod -R a+rX /var/www/app
+  sudo chmod 755 /var/www/app
   sudo systemctl restart examapi
   curl -fS http://127.0.0.1/api/health
 Содержимое списков после restart сбросится — это ожидаемо.
@@ -100,9 +100,10 @@ Bridged/«Сетевой мост» тоже возможен, но зависи
 
 9. clone пишет destination path already exists and is not an empty directory
   pwd
-  ls -la "$HOME/app"
-  git -C "$HOME/app" remote -v
-Если это уже xtwze/examLinux — используй существующий клон.
+  ls -la "$HOME/app/examLinux"
+  git -C "$HOME/app/examLinux" remote -v
+Если это уже xtwze/examLinux — используй существующий клон и выполни
+cd "$HOME/app/examLinux".
 Если другой проект — сохрани его отдельно; не удаляй папку вслепую.
 
 10. Полезные команды без ИИ

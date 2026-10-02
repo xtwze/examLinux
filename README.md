@@ -1,10 +1,10 @@
 # ExamApi — подготовка к зачёту по Linux
 
-Простой ASP.NET Core 6 API без базы данных: модели `Product` и `Category`,
+Простой ASP.NET Core 8 API без базы данных: модели `Product` и `Category`,
 два CRUD-контроллера и `GET /api/health`. Данные хранятся в памяти и
 сбрасываются после перезапуска.
 
-Основной сценарий рассчитан на **Ubuntu 22.04 в VirtualBox**, обычного
+Основной сценарий рассчитан на **Ubuntu 22.04 или 24.04 в VirtualBox**, обычного
 пользователя с `sudo` и доступ к интернету. Docker для выполнения задания
 не нужен.
 
@@ -27,17 +27,18 @@
 
 ## Основные команды
 
-Установка на чистой Ubuntu 22.04 и клонирование в пустую папку:
+Установка и клонирование в фиксированную папку:
 
 ```bash
 sudo apt update
-sudo apt install -y git curl nginx dotnet-sdk-6.0
+sudo apt install -y git curl nginx dotnet-sdk-8.0
 mkdir -p "$HOME/app"
-cd "$HOME/app"
-git clone https://github.com/xtwze/examLinux.git .
+git clone https://github.com/xtwze/examLinux.git "$HOME/app/examLinux"
+cd "$HOME/app/examLinux"
 ```
 
-Если репозиторий уже клонирован в `~/app`, повторять `git clone` не нужно.
+Если репозиторий уже клонирован в `~/app/examLinux`, повторять `git clone`
+не нужно. Все дальнейшие команды используют этот точный путь.
 
 Сборка выполняется обычным пользователем, копирование — через `sudo`:
 
@@ -46,7 +47,7 @@ dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
 sudo install -d -m 755 /var/www/app
 sudo cp -a "$HOME/exam-publish/." /var/www/app/
 sudo chown -R root:root /var/www/app
-sudo chmod -R a+rX /var/www/app
+sudo chmod 755 /var/www/app
 ```
 
 Далее выполни шаги systemd и Nginx из шпаргалки. Готовые конфиги находятся
@@ -97,12 +98,16 @@ Swagger будет доступен внутри VM на `http://127.0.0.1:5001/
 
 Для исходного коммита `fe1426f` прошли чистая Linux-сборка, запуск от
 `www-data`, проверка конфигов systemd/Nginx и 34 HTTP-проверки напрямую
-на 5000 и через Nginx на 80. Код API с тех пор в этой доработке не менялся.
+на 5000 и через Nginx на 80. После перевода на .NET 8 повторно проверены
+чистая сборка и ответы Health, Products и Categories на порту 5000.
 
-Проверка проводилась в Ubuntu 22.04 ARM64-контейнере. Реальные автозагрузка
-systemd после перезагрузки, сеть VirtualBox, Windows PowerShell и Ollama
-должны быть проверены на целевом компьютере перед зачётом.
+Первичная проверка проводилась в Ubuntu 22.04 ARM64-контейнере. Практическая
+репетиция на Ubuntu 24.04 подтвердила запуск systemd, Nginx, порты 80/5000
+и три API-маршрута внутри VM. Проброс VirtualBox, Windows PowerShell,
+автозапуск после перезагрузки и Ollama нужно проверить отдельно.
 
-.NET 6 оставлен ради задания; [его поддержка завершилась 12.11.2024](https://devblogs.microsoft.com/dotnet/dotnet-6-end-of-support/).
+.NET 8 используется, потому что он доступен в Ubuntu 24.04, на которой
+прошла практическая репетиция. В задании .NET 6 указан как желательный,
+но разрешён другой фреймворк.
 ИИ не требуется заданием; на зачёте используй его только при разрешении
 преподавателя. Основная шпаргалка работает без ИИ.

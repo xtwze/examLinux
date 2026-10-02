@@ -7,7 +7,7 @@ firewall целиком, sudo для dotnet publish или смену стека
 
 Контекст:
 Репозиторий https://github.com/xtwze/examLinux, исходники в /home/<user>/app.
-ASP.NET Core 6, ExamApi.csproj, без БД, Product/Category в статических списках.
+ASP.NET Core 8, ExamApi.csproj, без БД, Product/Category в статических списках.
 Controllers/ProductsController.cs и CategoriesController.cs: CRUD.
 GET /api/health возвращает status Healthy; корень / возвращает 404.
 appsettings.json задаёт Urls=http://0.0.0.0:5000.
@@ -31,7 +31,7 @@ VirtualBox NAT: TCP 127.0.0.1:8080 хоста → порт 80 гостя.
 Диагностика: systemctl status examapi --no-pager;
 sudo journalctl -u examapi -n 40 --no-pager; sudo nginx -t;
 sudo ss -ltnp; dotnet --list-runtimes; cat /etc/os-release.
-Нужен SDK 6 и ASP.NET Core runtime 6; SDK включает runtime.
+Нужен SDK 8 и ASP.NET Core runtime 8; SDK включает runtime.
 После restart API данные сбрасываются. Пример POST должен брать реальный
 id из ответа, не рассчитывать на id=4.
 Требуется показать history настоящих команд из интерактивного Bash.
