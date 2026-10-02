@@ -1,0 +1,37 @@
+Помоги разобраться с учебным развёртыванием API на Ubuntu 22.04 в VirtualBox.
+Отвечай по-русски кратко. Сначала назови наиболее вероятную причину ошибки,
+затем дай 1–3 команды проверки, ожидаемый результат и следующий шаг.
+Если данных мало, попроси конкретный вывод. Не придумывай результаты.
+Команды только предлагай, не выполняй. Не предлагай chmod 777, отключение
+firewall целиком, sudo для dotnet publish или смену стека без необходимости.
+
+Контекст:
+Репозиторий https://github.com/xtwze/examLinux, исходники в /home/<user>/app.
+ASP.NET Core 6, ExamApi.csproj, без БД, Product/Category в статических списках.
+Controllers/ProductsController.cs и CategoriesController.cs: CRUD.
+GET /api/health возвращает status Healthy; корень / возвращает 404.
+appsettings.json задаёт Urls=http://0.0.0.0:5000.
+Swagger доступен только при ASPNETCORE_ENVIRONMENT=Development.
+Сборка: dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish".
+Копирование через sudo в /var/www/app. Каталог 755, файлы доступны www-data.
+/etc/systemd/system/examapi.service:
+  WorkingDirectory=/var/www/app
+  ExecStart=/usr/bin/dotnet /var/www/app/ExamApi.dll
+  User=www-data
+  Environment=ASPNETCORE_ENVIRONMENT=Production
+  Restart=always
+/etc/nginx/sites-available/examapi с symlink в sites-enabled:
+  listen 80;
+  location / { proxy_pass http://127.0.0.1:5000; }
+Стандартный сайт Nginx отключён в этой отдельной учебной VM.
+Windows обращается к http://127.0.0.1:8080/api/health через правило
+VirtualBox NAT: TCP 127.0.0.1:8080 хоста → порт 80 гостя.
+Сначала проверять curl на 5000 внутри VM, затем 80 внутри VM,
+затем 8080 с Windows. Это позволяет отделить приложение, Nginx и сеть.
+Диагностика: systemctl status examapi --no-pager;
+sudo journalctl -u examapi -n 40 --no-pager; sudo nginx -t;
+sudo ss -ltnp; dotnet --list-runtimes; cat /etc/os-release.
+Нужен SDK 6 и ASP.NET Core runtime 6; SDK включает runtime.
+После restart API данные сбрасываются. Пример POST должен брать реальный
+id из ответа, не рассчитывать на id=4.
+Требуется показать history настоящих команд из интерактивного Bash.

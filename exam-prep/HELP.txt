@@ -1,0 +1,118 @@
+Linux зачёт — помощь при сбоях
+
+1. Permission denied при публикации в /var/www/app
+Не запускай весь dotnet publish от root. Из ~/app:
+  dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
+  sudo install -d -m 755 /var/www/app
+  sudo cp -a "$HOME/exam-publish/." /var/www/app/
+  sudo chown -R root:root /var/www/app
+  sudo chmod -R a+rX /var/www/app
+
+2. Сервис не работает или Nginx отвечает 502
+  systemctl status examapi --no-pager
+  sudo journalctl -u examapi -n 50 --no-pager
+  curl -v http://127.0.0.1:5000/api/health
+  dotnet --list-runtimes
+  ls -l /usr/bin/dotnet /var/www/app/ExamApi.dll
+  sudo ss -ltnp | grep ':5000'
+Нужен Microsoft.AspNetCore.App 6.0.x. Один .NET Runtime без ASP.NET Core
+недостаточен, SDK 6 включает нужный runtime.
+Если занят 5000, останови свой ручной dotnet run через Ctrl+C.
+Не завершай неизвестный процесс, пока не выяснишь, кому он принадлежит.
+После исправления: sudo systemctl restart examapi.
+
+3. Приложение работает на 5000, но не через 80
+  sudo nginx -t
+  systemctl status nginx --no-pager
+  ls -l /etc/nginx/sites-enabled/
+  sudo tail -n 30 /var/log/nginx/error.log
+  curl -v http://127.0.0.1/api/health
+У включённого сайта должен быть proxy_pass http://127.0.0.1:5000.
+Страница Welcome to nginx означает, что отвечает стандартный сайт.
+В чистой учебной VM удали его ссылку:
+  sudo rm -f /etc/nginx/sites-enabled/default
+  sudo nginx -t
+  sudo systemctl restart nginx
+
+4. apt не находит dotnet-sdk-6.0
+  cat /etc/os-release
+  sudo apt update
+  apt-cache policy dotnet-sdk-6.0
+Для Ubuntu 22.04 пакет доступен в обновлениях Ubuntu; проверь ошибки
+apt update и подключение jammy-updates в источниках пакетов.
+Если установлен другой выпуск Ubuntu или пакеты уже смешаны с Microsoft,
+не добавляй наугад чужой репозиторий 22.04. Сначала выясни выпуск/источники.
+Документация: https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-decision
+
+5. Не работает интернет / восстановление NuGet
+  ip -br addr
+  ip route
+  getent hosts github.com
+  curl -I https://github.com
+  curl -I https://api.nuget.org/v3/index.json
+  sudo apt update
+В VirtualBox у NAT должен быть включён «Кабель подключён».
+Интернет в Windows не гарантирует, что сеть настроена внутри VM.
+Для сборки нужен доступ и к GitHub, и к NuGet; для установки — к Ubuntu.
+После восстановления связи повтори publish. Старые Windows bin/obj
+не заменяют установленный Linux SDK и восстановление зависимостей.
+Не используй отключение проверки TLS как исправление ошибки сертификата.
+
+6. curl / и /swagger возвращает 404
+Это ожидаемо: у приложения нет маршрута /, а Swagger включён только
+в Development. Для сдачи используй /api/health и /api/products.
+Для тренировки Swagger из ~/app:
+  ASPNETCORE_ENVIRONMENT=Development dotnet run --urls http://127.0.0.1:5001
+Затем в самой VM открой http://127.0.0.1:5001/swagger.
+В Production Swagger для задания не нужен.
+
+7. В Linux всё отвечает, а в Windows нет
+При обычном NAT НЕ используй гостевой 10.0.2.15 напрямую с Windows.
+Проверь правило TCP: 127.0.0.1:8080 на хосте → порт 80 гостя.
+В PowerShell:
+  Test-NetConnection 127.0.0.1 -Port 8080
+  curl.exe -i http://127.0.0.1:8080/api/health
+Если 8080 занят, выбери свободный порт, например 8081, и поправь URL.
+В Linux:
+  sudo ufw status
+Если firewall активен: sudo ufw allow 80/tcp.
+
+Если нужен прямой IP VM, вариант — адаптер 1 NAT для интернета,
+адаптер 2 Host-only («Виртуальный адаптер хоста») с DHCP.
+В Linux найди второй IP через ip -br addr, например 192.168.56.101.
+В Windows: http://192.168.56.101/api/health (IP только пример).
+В Ubuntu Server второй интерфейс может потребовать включения DHCP
+в netplan; поэтому NAT с пробросом проще для основной инструкции.
+Bridged/«Сетевой мост» тоже возможен, но зависит от сети аудитории.
+
+8. Повторное развёртывание своего проекта
+Из ~/app сначала собери новый Release в домашнюю папку:
+  dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
+Только после успешной сборки:
+  sudo systemctl stop examapi
+  sudo cp -a "$HOME/exam-publish/." /var/www/app/
+  sudo chown -R root:root /var/www/app
+  sudo chmod -R a+rX /var/www/app
+  sudo systemctl restart examapi
+  curl -fS http://127.0.0.1/api/health
+Содержимое списков после restart сбросится — это ожидаемо.
+Если менял unit: sudo systemctl daemon-reload, затем restart.
+
+9. clone пишет destination path already exists and is not an empty directory
+  pwd
+  ls -la "$HOME/app"
+  git -C "$HOME/app" remote -v
+Если это уже xtwze/examLinux — используй существующий клон.
+Если другой проект — сохрани его отдельно; не удаляй папку вслепую.
+
+10. Полезные команды без ИИ
+  cat /etc/systemd/system/examapi.service
+  cat /etc/nginx/sites-available/examapi
+  stat -c '%a %n' /var/www/app
+  systemctl is-enabled examapi nginx
+  systemctl is-active examapi nginx
+  sudo journalctl -u examapi -n 40 --no-pager
+  history
+Для проверки переживания перезагрузки на тренировке выполни sudo reboot,
+потом проверь оба сервиса и запрос с Windows. Это ещё не проверено за тебя
+в твоей VirtualBox VM.

@@ -1,0 +1,64 @@
+Лог изолированной Linux-проверки 02.10.2026
+Commit fe1426fa7dbb92fd363159a5bd67bb99179c60fa
+
+dotnet-sdk-6.0:
+  Installed: (none)
+  Candidate: 6.0.136-0ubuntu1~22.04.1
+  Version table:
+     6.0.136-0ubuntu1~22.04.1 500
+        500 http://ports.ubuntu.com/ubuntu-ports jammy-updates/main arm64 Packages
+     6.0.135-0ubuntu1~22.04.1 500
+        500 http://ports.ubuntu.com/ubuntu-ports jammy-security/main arm64 Packages
+debconf: delaying package configuration, since apt-utils is not installed
+MSBuild version 17.3.4+a400405ba for .NET
+  Determining projects to restore...
+  Restored /home/examstudent/app/ExamApi.csproj (in 4.28 sec).
+  ExamApi -> /home/examstudent/app/bin/Release/net6.0/ExamApi.dll
+  ExamApi -> /home/examstudent/exam-publish/
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+curl: (7) Failed to connect to 127.0.0.1 port 5000 after 0 ms: Connection refused
+GET http://127.0.0.1:5000/api/health 200
+GET http://127.0.0.1:5000/api/products 200
+POST http://127.0.0.1:5000/api/products 201
+GET http://127.0.0.1:5000/api/products/4 200
+PUT http://127.0.0.1:5000/api/products/4 204
+GET http://127.0.0.1:5000/api/products/4 200
+DELETE http://127.0.0.1:5000/api/products/4 204
+GET http://127.0.0.1:5000/api/products/4 404
+GET http://127.0.0.1:5000/api/categories 200
+POST http://127.0.0.1:5000/api/categories 201
+GET http://127.0.0.1:5000/api/categories/4 200
+PUT http://127.0.0.1:5000/api/categories/4 204
+GET http://127.0.0.1:5000/api/categories/4 200
+DELETE http://127.0.0.1:5000/api/categories/4 204
+GET http://127.0.0.1:5000/api/categories/4 404
+GET http://127.0.0.1:5000/ 404
+GET http://127.0.0.1:5000/swagger 404
+GET http://127.0.0.1:80/api/health 200
+GET http://127.0.0.1:80/api/products 200
+POST http://127.0.0.1:80/api/products 201
+GET http://127.0.0.1:80/api/products/4 200
+PUT http://127.0.0.1:80/api/products/4 204
+GET http://127.0.0.1:80/api/products/4 200
+DELETE http://127.0.0.1:80/api/products/4 204
+GET http://127.0.0.1:80/api/products/4 404
+GET http://127.0.0.1:80/api/categories 200
+POST http://127.0.0.1:80/api/categories 201
+GET http://127.0.0.1:80/api/categories/4 200
+PUT http://127.0.0.1:80/api/categories/4 204
+GET http://127.0.0.1:80/api/categories/4 200
+DELETE http://127.0.0.1:80/api/categories/4 204
+GET http://127.0.0.1:80/api/categories/4 404
+GET http://127.0.0.1:80/ 404
+GET http://127.0.0.1:80/swagger 404
+PASS: health, both CRUD controllers, direct port 5000 and Nginx port 80
+755 root:root /var/www/app
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://0.0.0.0:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /var/www/app/

@@ -1,0 +1,141 @@
+Зачёт по Linux — короткий сценарий
+Ubuntu 22.04 · VirtualBox · .NET 6 · Nginx
+Проверено по «Экзамен.docx» и xtwze/examLinux, fe1426f, 02.10.2026.
+
+Открой этот файл на Windows. Команды Linux вводи по блокам в терминал VM
+под обычным пользователем с sudo. При ошибке остановись и открой HELP.txt.
+Рабочие предположения: чистая учебная VM, Ubuntu 22.04, интернет, Bash,
+домашняя папка /home/имя. Других сайтов в этой VM нет.
+Полный аудит находится в AUDIT.txt. Данные API хранятся только в памяти.
+
+0. ОДИН РАЗ НАСТРОЙ VIRTUALBOX
+
+Выключенная VM → Настройки → Сеть → Адаптер 1 → NAT → Дополнительно
+→ Проброс портов. Создай правило:
+  Имя: api
+  Протокол: TCP
+  IP хоста: 127.0.0.1
+  Порт хоста: 8080
+  IP гостя: оставь пустым (при обычном DHCP VirtualBox)
+  Порт гостя: 80
+
+Windows будет обращаться к http://127.0.0.1:8080/api/health.
+Внутри VM Nginx продолжает слушать требуемый порт 80 и передаёт запрос
+на порт 5000. Не пробрасывай 8080 сразу на 5000 — это обойдёт Nginx.
+Если преподаватель просит именно IP виртуалки, см. HELP.txt, пункт 7.
+Для прямого доступа по порту 80 Windows можно выбрать свободный порт
+хоста 80 вместо 8080; тогда адрес — http://127.0.0.1/api/health.
+
+1. УСТАНОВКА В VM
+
+cat /etc/os-release
+whoami
+printf '%s\n' "$HOME"
+sudo apt update
+sudo apt install -y git curl nginx dotnet-sdk-6.0
+dotnet --list-sdks
+dotnet --list-runtimes
+
+Ожидается Ubuntu 22.04, SDK 6.0.x и Microsoft.AspNetCore.App 6.0.x.
+Для чистой Ubuntu 22.04 используем пакеты Ubuntu; добавлять репозиторий
+Microsoft из старого README для этого сценария не требуется.
+Если apt не находит SDK, см. HELP.txt. Не продолжай сборку без SDK.
+
+2. КЛОНИРОВАНИЕ И ПУБЛИКАЦИЯ
+
+mkdir -p "$HOME/app"
+cd "$HOME/app"
+git clone https://github.com/xtwze/examLinux.git .
+pwd
+ls
+
+Команда clone рассчитана на пустую папку. Если это уже твой клон,
+повторно клонировать не нужно. Если там другие файлы — не удаляй их.
+Теперь собери проект и скопируй результаты публикации:
+
+dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
+sudo install -d -m 755 /var/www/app
+sudo cp -a "$HOME/exam-publish/." /var/www/app/
+sudo chown -R root:root /var/www/app
+sudo chmod -R a+rX /var/www/app
+stat -c '%a %U:%G %n' /var/www/app
+ls /var/www/app/ExamApi.dll
+
+Ожидается: 755 root:root /var/www/app и наличие ExamApi.dll.
+Сборка идёт в домашнюю папку, а sudo нужен только для копирования.
+Так не возникает Permission denied из оригинального README.
+Это команды первого развёртывания; повторная публикация — HELP.txt.
+
+3. SYSTEMD
+
+cd "$HOME/app"
+test -x /usr/bin/dotnet
+sudo cp examapi.service /etc/systemd/system/examapi.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now examapi
+systemctl status examapi --no-pager
+curl -fS http://127.0.0.1:5000/api/health
+
+Ожидается active (running) и JSON со status: Healthy.
+Если сразу после запуска curl ещё не подключился, повтори через секунду.
+Если опять ошибка — sudo journalctl -u examapi -n 40 --no-pager.
+Порт 5000 уже задан в appsettings.json, добавлять его в код не нужно.
+
+4. NGINX
+
+cd "$HOME/app"
+sudo cp examapi.nginx.conf /etc/nginx/sites-available/examapi
+sudo ln -sfn /etc/nginx/sites-available/examapi /etc/nginx/sites-enabled/examapi
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl enable --now nginx
+sudo systemctl restart nginx
+curl -fS http://127.0.0.1/api/health
+curl -fS http://127.0.0.1/api/products
+curl -fS http://127.0.0.1/api/categories
+sudo ss -ltnp | grep -E ':(80|5000)[[:space:]]'
+
+Ожидается успешный nginx -t, JSON и слушающие порты 80 и 5000.
+Удаляется только ссылка на стандартную страницу Nginx в учебной VM.
+Если UFW включён: sudo ufw status; затем sudo ufw allow 80/tcp.
+
+5. ПОКАЗАТЬ С WINDOWS
+
+Открой PowerShell на Windows и вставь:
+
+$base = 'http://127.0.0.1:8080'
+Invoke-RestMethod "$base/api/health"
+Invoke-RestMethod "$base/api/products"
+Invoke-RestMethod "$base/api/categories"
+
+Для полной демонстрации CRUD используй WINDOWS.ps1 из этого комплекта.
+Можно открыть его в Блокноте и вставлять блоки в PowerShell по очереди.
+Корень / и /swagger в Production отвечают 404 — это не поломка API.
+
+6. ПОКАЗАТЬ ИСТОРИЮ В ТОМ ЖЕ ТЕРМИНАЛЕ LINUX
+
+systemctl is-enabled examapi nginx
+systemctl is-active examapi nginx
+history
+history -a
+history > "$HOME/exam-history.txt"
+
+Не запускай весь сценарий через bash файл.sh, если нужно показать
+каждый шаг именно в history: внутренние команды скрипта туда не попадут.
+Не очищай историю и не подставляй искусственную: показывай свои действия.
+
+Что сказать при защите:
+— Product и Category — две модели; у каждой свой CRUD-контроллер.
+— HealthController подтверждает ответ приложения на /api/health.
+— Базы данных нет: списки в памяти обнуляются при перезапуске.
+— dotnet publish собирает Release; /var/www/app — папка публикации.
+— 755 означает rwx для владельца и r-x для группы и остальных.
+— systemd запускает DLL от www-data и перезапускает её при завершении.
+— Nginx принимает HTTP на 80 и передаёт его приложению на 5000.
+— NAT VirtualBox связывает порт 8080 Windows с портом 80 Linux.
+
+Перед зачётом один раз пройди сценарий на чистой VM и проверь запросы
+с Windows. Сохрани комплект на Windows/флешке. Снимок VM удобен для
+повторной тренировки, но на зачёте выполни требуемые шаги самостоятельно.
+.NET 6 оставлен ради соответствия заданию; его поддержка завершилась
+12.11.2024. Миграция проекта для этой учебной работы не требуется.

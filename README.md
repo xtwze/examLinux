@@ -1,268 +1,108 @@
-# ExamApi — ASP.NET Core 6 Web API
+# ExamApi — подготовка к зачёту по Linux
 
-Простой REST API без подключения к БД (экзаменационное задание).
+Простой ASP.NET Core 6 API без базы данных: модели `Product` и `Category`,
+два CRUD-контроллера и `GET /api/health`. Данные хранятся в памяти и
+сбрасываются после перезапуска.
 
----
+Основной сценарий рассчитан на **Ubuntu 22.04 в VirtualBox**, обычного
+пользователя с `sudo` и доступ к интернету. Docker для выполнения задания
+не нужен.
 
-## Структура проекта
+## С чего начать
 
-```
-ExamApi/
-├── Controllers/
-│   ├── ProductsController.cs    # CRUD для Products
-│   ├── CategoriesController.cs  # CRUD для Categories
-│   └── HealthController.cs      # Health Check
-├── Models/
-│   ├── Product.cs
-│   └── Category.cs
-├── Program.cs
-├── appsettings.json             # слушает :5000
-├── examapi.service              # systemd unit файл
-├── examapi.nginx.conf           # конфиг Nginx reverse proxy
-└── README.md                    # эта шпаргалка
-```
+Открой **[пошаговую шпаргалку](exam-prep/00-START.txt)** на Windows и вводи
+команды блоками в терминал Linux. Она включает установку SDK, клонирование,
+публикацию, systemd, Nginx, проверку из Windows и показ `history`.
 
----
-
-## Эндпоинты
-
-| Метод  | URL                   | Описание           |
-|--------|-----------------------|--------------------|
-| GET    | /api/products         | Все продукты       |
-| GET    | /api/products/{id}    | Продукт по ID      |
-| POST   | /api/products         | Создать продукт    |
-| PUT    | /api/products/{id}    | Обновить продукт   |
-| DELETE | /api/products/{id}    | Удалить продукт    |
-| GET    | /api/categories       | Все категории      |
-| GET    | /api/categories/{id}  | Категория по ID    |
-| POST   | /api/categories       | Создать категорию  |
-| PUT    | /api/categories/{id}  | Обновить категорию |
-| DELETE | /api/categories/{id}  | Удалить категорию  |
-| GET    | /api/health           | Health Check       |
-
----
-
-## ЧАСТЬ 1 — Локальный запуск на Windows (для проверки)
-
-### Шаг 1. Установить .NET 6 SDK
-
-Скачать и установить: https://dotnet.microsoft.com/en-us/download/dotnet/6.0  
-Выбрать: **.NET 6.0 → SDK → Windows x64 Installer**
-
-Проверить установку (открыть PowerShell):
-```powershell
-dotnet --version
-# должно вывести: 6.0.xxx
-```
-
-### Шаг 2. Клонировать репозиторий
-
-```powershell
-git clone https://github.com/<ваш-логин>/ExamApi.git
-cd ExamApi
-```
-
-### Шаг 3. Запустить
-
-```powershell
-dotnet run
-```
-
-Приложение запустится на `http://localhost:5000`
-
-### Шаг 4. Проверить в браузере или PowerShell
-
-```powershell
-# Health check
-Invoke-RestMethod http://localhost:5000/api/health
-
-# Все продукты
-Invoke-RestMethod http://localhost:5000/api/products
-
-# Все категории
-Invoke-RestMethod http://localhost:5000/api/categories
-
-# Создать продукт
-$body = @{ name="Monitor"; price=299.99; stock=5 } | ConvertTo-Json
-Invoke-RestMethod http://localhost:5000/api/products -Method Post -Body $body -ContentType "application/json"
-```
-
-Swagger UI (интерактивная документация): `http://localhost:5000/swagger`
-
----
-
-## ЧАСТЬ 2 — Загрузить проект на GitHub
-
-### Шаг 1. Создать репозиторий на GitHub
-
-1. Зайти на https://github.com → **New repository**
-2. Имя: `ExamApi`, тип: Public, без README (он уже есть)
-3. Нажать **Create repository**
-
-### Шаг 2. Инициализировать и запушить (из папки проекта на Windows)
-
-```powershell
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<ваш-логин>/ExamApi.git
-git push -u origin main
-```
-
----
-
-## ЧАСТЬ 3 — Деплой на Linux VM
-
-> Все команды выполняются на VM по SSH.  
-> Вместо `<ваш-логин>` подставить свой GitHub username.
-
-### Шаг 1. Установить .NET 6
-
-```bash
-# Добавить репозиторий Microsoft
-wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-sudo dpkg -i packages-microsoft-prod.deb
-
-# Обновить пакеты и установить SDK
-sudo apt update
-sudo apt install -y dotnet-sdk-6.0
-
-# Проверить
-dotnet --version
-```
-
-### Шаг 2. Подготовить директорию и клонировать репозиторий
-
-```bash
-# Создать директорию для репозитория
-mkdir -p /home/$USER/app
-cd /home/$USER/app
-
-# Клонировать репозиторий
-git clone https://github.com/<ваш-логин>/ExamApi.git .
-
-# Убедиться что файлы на месте
-ls -la
-```
-
-### Шаг 3. Собрать проект и опубликовать в /var/www/app
-
-```bash
-# Создать папку для деплоя с правами 755
-sudo mkdir -p /var/www/app
-sudo chmod 755 /var/www/app
-
-# Собрать и опубликовать
-cd /home/$USER/app
-dotnet publish -c Release -o /var/www/app
-
-# Проверить что файлы появились
-ls -la /var/www/app
-```
-
-### Шаг 4. Создать systemd демон
-
-```bash
-# Скопировать unit файл
-sudo cp /home/$USER/app/examapi.service /etc/systemd/system/examapi.service
-
-# Перечитать конфиги systemd
-sudo systemctl daemon-reload
-
-# Включить автозапуск при старте VM
-sudo systemctl enable examapi
-
-# Запустить сервис
-sudo systemctl start examapi
-
-# Проверить статус (должно быть: Active: active (running))
-sudo systemctl status examapi
-```
-
-Если что-то пошло не так — смотреть логи:
-```bash
-sudo journalctl -u examapi -n 50 --no-pager
-```
-
-### Шаг 5. Установить Nginx и настроить reverse proxy
-
-```bash
-# Установить Nginx
-sudo apt install -y nginx
-
-# Скопировать конфиг
-sudo cp /home/$USER/app/examapi.nginx.conf /etc/nginx/sites-available/examapi
-
-# Включить сайт
-sudo ln -s /etc/nginx/sites-available/examapi /etc/nginx/sites-enabled/
-
-# Удалить дефолтный сайт чтобы не конфликтовал
-sudo rm /etc/nginx/sites-enabled/default
-
-# Проверить конфиг на ошибки
-sudo nginx -t
-
-# Перезапустить и включить автозапуск
-sudo systemctl restart nginx
-sudo systemctl enable nginx
-
-# Проверить статус
-sudo systemctl status nginx
-```
-
----
-
-## ЧАСТЬ 4 — Проверка с Windows (финальная демонстрация)
-
-Узнать IP адрес VM:
-```bash
-ip a
-# смотреть inet у eth0 или ens3
-```
-
-Запросы с Windows (подставить реальный IP):
-```powershell
-# Health check
-Invoke-RestMethod http://<IP-VM>/api/health
-
-# Получить все продукты
-Invoke-RestMethod http://<IP-VM>/api/products
-
-# Получить продукт по ID
-Invoke-RestMethod http://<IP-VM>/api/products/1
-
-# Создать продукт
-$body = @{ name="Monitor"; price=299.99; stock=5 } | ConvertTo-Json
-Invoke-RestMethod http://<IP-VM>/api/products -Method Post -Body $body -ContentType "application/json"
-
-# Обновить продукт
-$body = @{ name="Monitor 4K"; price=499.99; stock=3 } | ConvertTo-Json
-Invoke-RestMethod http://<IP-VM>/api/products/4 -Method Put -Body $body -ContentType "application/json"
-
-# Удалить продукт
-Invoke-RestMethod http://<IP-VM>/api/products/4 -Method Delete
-
-# Получить все категории
-Invoke-RestMethod http://<IP-VM>/api/categories
-```
-
----
-
-## ЧАСТЬ 5 — История команд (показать перед сдачей)
-
-```bash
-history
-```
-
----
-
-## Быстрая диагностика
-
-| Проблема | Команда |
+| Файл | Для чего |
 |---|---|
-| Сервис не запускается | `sudo journalctl -u examapi -n 50` |
-| Nginx не стартует | `sudo nginx -t` |
-| Порт уже занят | `sudo ss -tlnp \| grep 5000` |
-| Проверить что слушает :5000 | `curl http://localhost:5000/api/health` |
-| Проверить что слушает :80 | `curl http://localhost/api/health` |
+| [00-START.txt](exam-prep/00-START.txt) | Полный сценарий выполнения |
+| [HELP.txt](exam-prep/HELP.txt) | Диагностика ошибок сборки, сервиса, Nginx и сети |
+| [WINDOWS.ps1](exam-prep/WINDOWS.ps1) | Демонстрация Health Check и CRUD обеих моделей |
+| [AUDIT.txt](exam-prep/AUDIT.txt) | Сопоставление исходного репозитория с каждым требованием задания |
+| [VERIFICATION.txt](exam-prep/VERIFICATION.txt) | Лог проверки исходного API в Linux |
+| [AI.txt](exam-prep/AI.txt) | Сетевой и локальный ИИ для подсказок |
+| [AI-CONTEXT.txt](exam-prep/AI-CONTEXT.txt) | Готовый контекст для чата |
+| [ASK-LOCAL.ps1](exam-prep/ASK-LOCAL.ps1) | Необязательный клиент локальной Ollama на Windows |
+
+## Основные команды
+
+Установка на чистой Ubuntu 22.04 и клонирование в пустую папку:
+
+```bash
+sudo apt update
+sudo apt install -y git curl nginx dotnet-sdk-6.0
+mkdir -p "$HOME/app"
+cd "$HOME/app"
+git clone https://github.com/xtwze/examLinux.git .
+```
+
+Если репозиторий уже клонирован в `~/app`, повторять `git clone` не нужно.
+
+Сборка выполняется обычным пользователем, копирование — через `sudo`:
+
+```bash
+dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
+sudo install -d -m 755 /var/www/app
+sudo cp -a "$HOME/exam-publish/." /var/www/app/
+sudo chown -R root:root /var/www/app
+sudo chmod -R a+rX /var/www/app
+```
+
+Далее выполни шаги systemd и Nginx из шпаргалки. Готовые конфиги находятся
+в корне: `examapi.service` и `examapi.nginx.conf`.
+
+Схема запроса при NAT VirtualBox:
+
+```text
+Windows 127.0.0.1:8080 → Linux Nginx :80 → ExamApi :5000
+```
+
+Создай правило проброса TCP с IP хоста `127.0.0.1`, портом хоста `8080`
+и портом гостя `80`. IP гостя при стандартном DHCP оставь пустым.
+После развёртывания проверь в PowerShell:
+
+```powershell
+$base = 'http://127.0.0.1:8080'
+Invoke-RestMethod "$base/api/health"
+Invoke-RestMethod "$base/api/products"
+Invoke-RestMethod "$base/api/categories"
+```
+
+## Маршруты
+
+| Метод | Путь | Действие |
+|---|---|---|
+| GET | `/api/health` | Проверка ответа сервиса |
+| GET | `/api/products`, `/api/categories` | Список |
+| GET | `/api/products/{id}`, `/api/categories/{id}` | Одна запись |
+| POST | `/api/products`, `/api/categories` | Создание |
+| PUT | `/api/products/{id}`, `/api/categories/{id}` | Изменение |
+| DELETE | `/api/products/{id}`, `/api/categories/{id}` | Удаление |
+
+После POST используй ID из ответа, а не фиксированный `4`.
+Успешные PUT/DELETE возвращают `204` без тела.
+
+Корень `/` не имеет маршрута. Swagger включён только в Development;
+для отдельной локальной тренировки можно запустить:
+
+```bash
+ASPNETCORE_ENVIRONMENT=Development dotnet run --urls http://127.0.0.1:5001
+```
+
+Swagger будет доступен внутри VM на `http://127.0.0.1:5001/swagger`.
+Для защиты через systemd используется Production и обычные API-запросы.
+
+## Что проверено
+
+Для исходного коммита `fe1426f` прошли чистая Linux-сборка, запуск от
+`www-data`, проверка конфигов systemd/Nginx и 34 HTTP-проверки напрямую
+на 5000 и через Nginx на 80. Код API с тех пор в этой доработке не менялся.
+
+Проверка проводилась в Ubuntu 22.04 ARM64-контейнере. Реальные автозагрузка
+systemd после перезагрузки, сеть VirtualBox, Windows PowerShell и Ollama
+должны быть проверены на целевом компьютере перед зачётом.
+
+.NET 6 оставлен ради задания; [его поддержка завершилась 12.11.2024](https://devblogs.microsoft.com/dotnet/dotnet-6-end-of-support/).
+ИИ не требуется заданием; на зачёте используй его только при разрешении
+преподавателя. Основная шпаргалка работает без ИИ.
