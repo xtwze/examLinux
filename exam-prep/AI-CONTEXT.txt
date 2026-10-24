@@ -6,20 +6,21 @@
 firewall целиком, sudo для dotnet publish или смену стека без необходимости.
 
 Контекст:
-Репозиторий https://github.com/xtwze/examLinux, исходники в /home/<user>/app.
+Репозиторий https://github.com/xtwze/examLinux, исходники в /home/<user>/app/examLinux.
 ASP.NET Core 8, ExamApi.csproj, без БД, Product/Category в статических списках.
 Controllers/ProductsController.cs и CategoriesController.cs: CRUD.
 GET /api/health возвращает status Healthy; корень / возвращает 404.
-appsettings.json задаёт Urls=http://0.0.0.0:5000.
+appsettings.json задаёт Urls=http://127.0.0.1:5000.
 Swagger доступен только при ASPNETCORE_ENVIRONMENT=Development.
 Сборка: dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish".
-Копирование через sudo в /var/www/app. Каталог 755, файлы доступны www-data.
+Копирование через sudo в /var/www/app. Каталоги 755, файлы 644, владелец root:root; API читает их от обычного пользователя Ubuntu.
 /etc/systemd/system/examapi.service:
   WorkingDirectory=/var/www/app
   ExecStart=/usr/bin/dotnet /var/www/app/ExamApi.dll
-  User=www-data
+  User=имя_обычного_пользователя_Ubuntu
   Environment=ASPNETCORE_ENVIRONMENT=Production
-  Restart=always
+  Restart=on-failure
+  RestartSec=5
 /etc/nginx/sites-available/examapi с symlink в sites-enabled:
   listen 80;
   location / { proxy_pass http://127.0.0.1:5000; }
@@ -35,3 +36,9 @@ sudo ss -ltnp; dotnet --list-runtimes; cat /etc/os-release.
 После restart API данные сбрасываются. Пример POST должен брать реальный
 id из ответа, не рассчитывать на id=4.
 Требуется показать history настоящих команд из интерактивного Bash.
+
+Отдельного пользователя создавать не надо. В репозитории User=YOUR_USER;
+перед установкой unit шаблон заменяется на результат id -un через sed.
+Нельзя просто копировать unit без подстановки имени. API не запускается от root.
+SSH под тем же обычным пользователем: ssh -p 2222 student@127.0.0.1;
+NAT 2222->22, 8080->80. CONFIG-EXPLAINED.txt объясняет строки конфигов.

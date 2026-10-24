@@ -6,7 +6,8 @@ Linux зачёт — помощь при сбоях
   sudo install -d -m 755 /var/www/app
   sudo cp -a "$HOME/exam-publish/." /var/www/app/
   sudo chown -R root:root /var/www/app
-  sudo chmod 755 /var/www/app
+  sudo find /var/www/app -type d -exec chmod 755 {} +
+  sudo find /var/www/app -type f -exec chmod 644 {} +
 
 2. Сервис не работает или Nginx отвечает 502
   systemctl status examapi --no-pager
@@ -15,6 +16,17 @@ Linux зачёт — помощь при сбоях
   dotnet --list-runtimes
   ls -l /usr/bin/dotnet /var/www/app/ExamApi.dll
   sudo ss -ltnp | grep ':5000'
+Проверь пользователя и доступ к публикации:
+  whoami
+  grep '^User=' /etc/systemd/system/examapi.service
+  test -r /var/www/app/ExamApi.dll
+  test -r /var/www/app/appsettings.json
+  namei -l /var/www/app/ExamApi.dll
+User должен совпадать с твоим обычным пользователем Ubuntu, не root.
+status=217/USER означает проблему с User в unit. Если остался YOUR_USER,
+установи unit заново командой sed из шага 4 в 00-START.txt, затем:
+  sudo systemctl daemon-reload
+  sudo systemctl restart examapi
 Нужен Microsoft.AspNetCore.App 8.0.x. Один .NET Runtime без ASP.NET Core
 недостаточен, SDK 8 включает нужный runtime.
 Если занят 5000, останови свой ручной dotnet run через Ctrl+C.
@@ -76,6 +88,7 @@ Linux зачёт — помощь при сбоях
 В Linux:
   sudo ufw status
 Если firewall активен: sudo ufw allow 80/tcp.
+Порт 5000 открывать в firewall не надо: API слушает только loopback.
 
 Если нужен прямой IP VM, вариант — адаптер 1 NAT для интернета,
 адаптер 2 Host-only («Виртуальный адаптер хоста») с DHCP.
@@ -92,7 +105,8 @@ Bridged/«Сетевой мост» тоже возможен, но зависи
   sudo systemctl stop examapi
   sudo cp -a "$HOME/exam-publish/." /var/www/app/
   sudo chown -R root:root /var/www/app
-  sudo chmod 755 /var/www/app
+  sudo find /var/www/app -type d -exec chmod 755 {} +
+  sudo find /var/www/app -type f -exec chmod 644 {} +
   sudo systemctl restart examapi
   curl -fS http://127.0.0.1/api/health
 Содержимое списков после restart сбросится — это ожидаемо.
@@ -117,3 +131,122 @@ cd "$HOME/app/examLinux".
 Для проверки переживания перезагрузки на тренировке выполни sudo reboot,
 потом проверь оба сервиса и запрос с Windows. Это ещё не проверено за тебя
 в твоей VirtualBox VM.
+
+11. Владельцы, sudo, chmod и Operation not permitted
+
+Кто я и кому принадлежит файл:
+  whoami
+  id
+  ls -ld /var/www/app
+  stat -c '%a %U:%G %n' /var/www/app/ExamApi.dll
+  sudo find /var/www/app -user root -type f -print
+  sudo find /var/www/app ! -user root -print
+Первый find показывает root-owned файлы, второй — отклонения от модели.
+У публикации ожидаем root:root, у исходников — твоего обычного пользователя.
+Права 755: u=rwx, g=rx, o=rx; 644: u=rw, g=r, o=r.
+Для каталога r — видеть список имён, x — проходить к файлам, w вместе с x —
+создавать/удалять записи. Для файла x — запускать его как программу.
+Владелец и права — разные вещи: chown меняет владельца, chmod меняет права.
+Право w на файл НЕ даёт права менять его chmod: это делает владелец/root.
+
+Безопасная тренировка буквенного chmod — только на своём временном файле:
+  demo=$(mktemp)
+  chmod 644 "$demo"
+  ls -l "$demo"
+  chmod u-r "$demo"
+  ls -l "$demo"
+  chmod g+w "$demo"
+  ls -l "$demo"
+  chmod a-r "$demo"
+  ls -l "$demo"
+  chmod 600 "$demo"
+  rm "$demo"
+u — владелец, g — группа, o — остальные, a — все три категории.
+-r убирает чтение, +w добавляет запись; остальные биты сохраняются.
+Из 644 получатся 244 (-w-r--r--), 264 (-w-rw-r--), 220 (-w--w----).
+Затем 600 возвращает владельцу чтение и запись. Не применяй a-r к проекту!
+Владелец попадает в класс u: после u-r его не спасают r группы/остальных.
+
+sudo выполняет ОДНУ команду с правами root, если твой пользователь допущен.
+  sudo -l
+  sudo -v
+Пароль вводится вслепую. Ошибка not in the sudoers file требует помощи
+администратора; не пытайся обходить доступ. Не держи всё время root-shell.
+Для chmod root-owned публикации нужен sudo; API от root запускать не нужно.
+sudo echo ... > /etc/... не повышает права перенаправления > оболочки:
+для своих конфигов используй sudo cp, sudoedit или ... | sudo tee ПУТЬ.
+
+Operation not permitted при chmod/chown: сначала проверь конкретный путь:
+  stat -c '%a %U:%G %n' /путь/к/файлу
+  namei -l /путь/к/файлу
+  lsattr /путь/к/файлу
+  findmnt -T /путь/к/файлу
+Если ты не владелец — для своего учебного файла повтори chmod через sudo.
+Permission denied может означать отсутствие x у родительского каталога;
+namei показывает права каждого компонента пути.
+Если даже sudo не помогает, проверь i (immutable) и a (append-only) в lsattr,
+ro (read-only) и тип ФС в findmnt. Не снимай защиту вслепую.
+Shared folder VirtualBox (vboxsf), NTFS/FAT/CIFS могут не поддерживать обычные
+Unix-права: перенеси проект в $HOME/app на Linux-ФС и повтори проверку.
+Read-only file system требует исправления состояния ФС, chmod не поможет.
+Не используй chmod 777 и рекурсивный chown на /, /etc или чужих каталогах.
+Если раньше собирал с sudo, сначала найди root-owned файлы в исходниках:
+  find "$HOME/app/examLinux" -user root -print
+Только если это ТВОЙ клон, верни его своему пользователю:
+  sudo chown -R "$(id -un):$(id -gn)" "$HOME/app/examLinux"
+После этого публикуй без sudo. Владельца /var/www/app оставь root.
+
+12. SSH, NAT, Bridge, IP Ubuntu и localhost
+
+localhost / 127.0.0.1 — «эта машина». В Windows это Windows, в Ubuntu — Ubuntu.
+NAT скрывает VM за хостом, но даёт ей исходящий доступ в интернет.
+Адрес Ubuntu найди внутри Ubuntu: ip -br -4 addr; маршрут: ip route.
+127.0.0.1 на lo — loopback. 10.0.2.15 часто адрес NAT, но не гарантирован;
+при обычном NAT Windows обращается через проброс, а не к этому IP напрямую.
+
+Два правила TCP в настройках ИМЕННО ТВОЕЙ VM:
+  127.0.0.1:2222 хоста -> гостевой :22 (SSH)
+  127.0.0.1:8080 хоста -> гостевой :80 (Nginx)
+Guest IP при стандартном DHCP пустой. Не путай NAT и отдельную «Сеть NAT».
+Пример PowerShell, student заменяется на whoami из Ubuntu:
+  Test-NetConnection 127.0.0.1 -Port 2222
+  ssh -v -p 2222 student@127.0.0.1
+  Test-NetConnection 127.0.0.1 -Port 8080
+  curl.exe -i http://127.0.0.1:8080/api/health
+После SSH можно продолжать настройку Linux из Windows, копируя команды.
+
+Bridge / «Сетевой мост» делает VM отдельным участником сети роутера.
+Выбери реальный Wi-Fi/Ethernet адаптер хоста и получи IP в Ubuntu:
+  ip -br -4 addr
+  ip route
+Если Ubuntu получила, например, 192.168.1.42, в Windows:
+  ssh student@192.168.1.42
+  curl.exe -i http://192.168.1.42/api/health
+Здесь SSH по 22 и HTTP по 80; порты 2222/8080 из NAT не используются.
+IP только пример, бери свой. В аудитории DHCP, Wi-Fi или изоляция клиентов
+могут мешать Bridge; основной воспроизводимый сценарий — NAT с пробросом.
+IP Windows (ipconfig) и IP Ubuntu (ip -br -4 addr) — разные адреса.
+Не открывай 5000 наружу: Nginx достаёт API по loopback внутри Ubuntu.
+
+Проверяй соединение снизу вверх:
+  В консоли Ubuntu: systemctl status ssh --no-pager
+  sudo ss -ltnp | grep -E ':(22|80|5000)[[:space:]]'
+  sudo journalctl -u ssh -n 30 --no-pager
+  sudo ufw status
+  curl -fS http://127.0.0.1:5000/api/health
+  curl -fS http://127.0.0.1/api/health
+Если UFW активен, разреши 22/tcp и 80/tcp; UFW не выключай.
+При NAT UFW в госте видит порты 22 и 80, не хостовые 2222/8080.
+Connection refused — по адресу нет слушателя/проброса либо явный reject;
+timeout — проверь VM, адрес, маршрут, firewall и правило NAT.
+Permission denied (publickey,password) в SSH — сеть уже работает:
+проверь имя из whoami, пароль/ключ и журнал ssh; не меняй Nginx.
+502 от Nginx — HTTP дошёл до Ubuntu, ищи причину в API/systemd.
+HTTP 404 на / — проверь именно /api/health.
+Ping может блокироваться и не заменяет Test-NetConnection нужного порта.
+Если порт хоста занят, PowerShell покажет слушателя:
+  Get-NetTCPConnection -LocalPort 2222,8080 -State Listen -ErrorAction SilentlyContinue
+Не завершай чужой процесс; смени хостовый порт и команды подключения.
+Если после переустановки VM SSH сообщает REMOTE HOST IDENTIFICATION HAS
+CHANGED, сначала сверяй новый fingerprint в консоли Ubuntu. Только после
+подтверждения своей VM удали старый ключ: ssh-keygen -R "[127.0.0.1]:2222".

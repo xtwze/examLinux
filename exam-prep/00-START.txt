@@ -18,6 +18,10 @@ Ubuntu 22.04 или 24.04 · VirtualBox · .NET 8 · systemd · Nginx
   IP гостя: оставить пустым
   Порт гостя: 80
 
+Добавь второе правило для SSH:
+  Имя: ssh; Протокол: TCP; IP хоста: 127.0.0.1
+  Порт хоста: 2222; IP гостя: пусто; Порт гостя: 22
+
 Нажми OK и запусти VM. Это настраивается в параметрах конкретной VM,
 а не в общем окне «Виртуальные сети» или «Сеть NAT».
 
@@ -32,12 +36,37 @@ cat /etc/os-release | grep -E '^(NAME|VERSION_ID)='
 whoami
 printf '%s\n' "$HOME"
 sudo apt update
-sudo apt install -y git curl nginx dotnet-sdk-8.0
+sudo apt install -y git curl nginx openssh-server dotnet-sdk-8.0
 dotnet --version
 
 Ожидается Ubuntu 22.04 или 24.04 и версия dotnet 8.0.x.
 Когда sudo просит пароль, символы на экране не появляются — это нормально.
 Если пакет dotnet-sdk-8.0 не найден, открой HELP.txt, пункт 4.
+
+1А. ПОДКЛЮЧИСЬ ПО SSH ИЗ WINDOWS (ИЛИ ПРОДОЛЖАЙ В КОНСОЛИ VM)
+
+В Ubuntu:
+  sudo systemctl enable --now ssh
+  whoami
+  ip -br -4 addr
+  sudo ss -ltnp | grep ':22[[:space:]]'
+Если UFW активен (sudo ufw status): sudo ufw allow 22/tcp.
+
+В PowerShell Windows замени student на результат whoami в Ubuntu:
+  Test-NetConnection 127.0.0.1 -Port 2222
+  ssh -p 2222 student@127.0.0.1
+При первом подключении сравни fingerprint с Ubuntu:
+  sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+Подтверди yes только для своей VM и введи пароль пользователя Ubuntu.
+Пароль не отображается. После входа команды Linux выполняются в Ubuntu.
+  whoami
+  hostname
+  pwd
+exit завершает SSH и возвращает в Windows. Дальнейшие Linux-команды
+вводи в одном интерактивном Bash, чтобы они остались в history.
+Если ssh не найден в Windows, включи компонент OpenSSH Client:
+Параметры Windows → Дополнительные компоненты → Добавить компонент.
+Сеть Bridge и диагностика — HELP.txt, пункты 7 и 12.
 
 2. КЛОНИРУЙ РЕПОЗИТОРИЙ В ОДНО ФИКСИРОВАННОЕ МЕСТО
 
@@ -64,25 +93,58 @@ dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
 sudo install -d -m 755 /var/www/app
 sudo cp -a "$HOME/exam-publish/." /var/www/app/
 sudo chown -R root:root /var/www/app
-sudo chmod 755 /var/www/app
+sudo find /var/www/app -type d -exec chmod 755 {} +
+sudo find /var/www/app -type f -exec chmod 644 {} +
 stat -c '%a %U:%G %n' /var/www/app
-ls /var/www/app/ExamApi.dll
+stat -c '%a %U:%G %n' /var/www/app/ExamApi.dll
+sudo find /var/www/app ! -user root -print
 
 Ожидается:
 755 root:root /var/www/app
-/var/www/app/ExamApi.dll
+644 root:root /var/www/app/ExamApi.dll
+find не должен вывести ни одного пути: все файлы и каталоги принадлежат root.
+Каталоги 755 позволяют проходить внутрь, файлы 644 — читать DLL/config.
+DLL запускается через dotnet, право x самой DLL не требуется.
+root владеет публикацией; API не может менять собственные файлы.
+Сборку и исходники оставляем обычному пользователю, sudo publish не нужен.
+Подробности chmod u-r, g+w, a-r — HELP.txt, пункт 11.
 
 Если cp пишет cannot stat 'HOME/...' — пропущен знак $ перед HOME.
 Повтори правильную команду: sudo cp -a "$HOME/exam-publish/." /var/www/app/
 
 4. СОЗДАЙ И ЗАПУСТИ SYSTEMD-СЕРВИС
 
+API запускается от твоего обычного пользователя Ubuntu, который клонировал
+и собрал проект. Отдельного пользователя не создаём. Не выполняй этот шаг
+из root-shell: whoami должен показать твоё имя, а не root.
+
+whoami
+id
+test "$(id -u)" -ne 0
+test -r /var/www/app/ExamApi.dll
 test -x /usr/bin/dotnet
-sudo cp "$HOME/app/examLinux/examapi.service" /etc/systemd/system/examapi.service
+
+Если test -ne 0 завершился ошибкой — выйди из root-shell и вернись к своему
+обычному пользователю. В репозитории User=YOUR_USER — шаблон; systemd сам
+его НЕ заменяет. Следующая команда подставляет результат id -un до установки:
+
+sed "s/^User=YOUR_USER$/User=$(id -un)/" "$HOME/app/examLinux/examapi.service" | sudo tee /etc/systemd/system/examapi.service > /dev/null
+cat /etc/systemd/system/examapi.service
+
+В установленном файле должна быть User=твоё_имя, без YOUR_USER и без root.
+cat покажет весь unit для проверки. После этого:
+
 sudo systemctl daemon-reload
-sudo systemctl enable --now examapi
+sudo systemctl enable examapi
+sudo systemctl restart examapi
 systemctl status examapi --no-pager
 curl -fS http://127.0.0.1:5000/api/health
+ps -o user,pid,args -p "$(systemctl show -p MainPID --value examapi)"
+
+В ps пользователь процесса должен совпадать с whoami, а не быть root.
+Если curl выполнен сразу после restart, запуск может ещё идти: проверь
+status/journal и повтори curl через несколько секунд.
+Каждая строка unit объяснена в CONFIG-EXPLAINED.txt.
 
 Печатай daemon-reload точно через дефис. Если systemctl отвечает
 Unknown command verb, сравни написание с командой выше и повтори её.
@@ -92,13 +154,18 @@ Unknown command verb, сравни написание с командой выш
 
 5. НАСТРОЙ NGINX НА ПОРТУ 80
 
+Следующие команды рассчитаны на отдельную учебную VM с одним сайтом.
+Если на машине есть чужие сайты, сначала посмотри sudo nginx -T.
+
 sudo cp "$HOME/app/examLinux/examapi.nginx.conf" /etc/nginx/sites-available/examapi
 sudo ln -sfn /etc/nginx/sites-available/examapi /etc/nginx/sites-enabled/examapi
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
+
+Только если nginx -t прошёл успешно:
+
 sudo systemctl enable --now nginx
 sudo systemctl restart nginx
-
 Ожидается syntax is ok и test is successful. Затем проверь:
 
 curl -fS http://127.0.0.1/api/health
@@ -137,15 +204,15 @@ exam-prep/WINDOWS.ps1. Успешные PUT и DELETE возвращают пу�
 
 8. ФИНАЛЬНАЯ ПРОВЕРКА И HISTORY В UBUNTU
 
-systemctl is-enabled examapi nginx
-systemctl is-active examapi nginx
+systemctl is-enabled examapi nginx ssh
+systemctl is-active examapi nginx ssh
 stat -c '%a %U:%G %n' /var/www/app
 curl -fS http://127.0.0.1/api/health
 history
 history -a
 history > "$HOME/exam-history.txt"
 
-Ожидается enabled, enabled; active, active; права 755; Healthy.
+Ожидается enabled и active для каждой из трёх служб; права 755; Healthy.
 Выполняй команды вручную в одном терминале: команды внутри bash-скрипта
 не появляются по отдельности в обычной истории Bash.
 
@@ -155,13 +222,14 @@ history > "$HOME/exam-history.txt"
 — HealthController отвечает на GET /api/health.
 — Базы данных нет: записи находятся в памяти и исчезают после перезапуска.
 — dotnet publish создаёт Release, который лежит в /var/www/app.
-— Права 755: владелец может читать, писать и выполнять; остальные — читать
+— Права каталогов 755: владелец может читать, писать и выполнять; остальные — читать
   и выполнять.
-— systemd запускает ExamApi.dll от пользователя www-data и включает
+— systemd запускает ExamApi.dll от моего обычного пользователя Ubuntu и включает
   приложение при загрузке Ubuntu.
-— Приложение слушает HTTP 5000. Nginx слушает 80 и проксирует на 5000.
+— Приложение слушает только локальный HTTP 127.0.0.1:5000. Nginx слушает 80 и проксирует на 5000.
 — VirtualBox пересылает Windows-порт 8080 на Nginx-порт 80 гостевой VM.
 
-На текущей тренировке подтверждены systemd, Nginx, порты 80/5000 и ответы
-трёх API внутри Ubuntu 24.04. Проверку Windows через :8080 нужно выполнить
-после настройки проброса порта конкретной VM.
+Смысл каждой строки конфигов — CONFIG-EXPLAINED.txt.
+Эта инструкция не заменяет проверку твоей VM: выполни шаги 6–8 с Windows,
+затем на тренировке sudo reboot и повтори проверку SSH, сервисов и API.
+Фактически выполненные проверки пакета смотри в VERIFICATION.txt.

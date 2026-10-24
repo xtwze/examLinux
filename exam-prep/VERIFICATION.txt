@@ -1,3 +1,108 @@
+ТЕКУЩАЯ ПРОВЕРКА ПАКЕТА — 24.10.2026
+База: origin/main 76c26cfc6b4f41feb942b46319dea4398625ad89.
+
+Среда: временный контейнер Ubuntu 22.04.5 LTS, ARM64 (aarch64).
+Официальный .NET SDK 8.0.425 получен с dotnetcli.blob.core.windows.net;
+контрольная сумма Content-MD5 совпала. SDK распакован в /opt/dotnet,
+/usr/bin/dotnet ссылается на него. Nginx/systemd установлены из Ubuntu apt.
+Docker нужен только для этой изолированной проверки, не для экзамена.
+
+Проверено:
+— Чистый dotnet publish ExamApi.csproj -c Release -o /home/examstudent/exam-publish
+  от обычного пользователя examstudent; исходники скопированы в доступную
+  ему папку. Команда завершилась успешно. Контроллеры и модели не менялись.
+— Публикация в /var/www/app: root:root, каталоги 755, файлы 644.
+— Обычный пользователь читает DLL, но не может писать в неё или каталог.
+— Шаблон User=YOUR_USER заменён на User=examstudent перед установкой unit.
+— systemd-analyze verify /etc/systemd/system/examapi.service: код 0.
+— nginx -t: syntax is ok / test is successful.
+— API в Production запущен от examstudent (не root), слушает 127.0.0.1:5000.
+— 34 HTTP-проверки: Health, обе коллекции, создание/чтение/изменение/удаление
+  каждой модели и 404 удалённой записи, ожидаемые 404 на / и /swagger.
+  Весь набор выполнен напрямую на 5000 и через минимальный Nginx на 80.
+— Проверены данные после изменения и Location после POST: исходный Host
+  127.0.0.1:8080 сохранён, путь ведёт на правильную запись. ASP.NET Core
+  формирует /api/Products и /api/Categories; маршруты принимают оба регистра.
+— chmod 644 -> u-r -> g+w -> a-r: получены 244 -> 264 -> 220.
+— JSON, подстановка имени через sed, согласованность актуальных документов,
+  ссылки README, синтаксис команд и git diff --check: успешно.
+
+Ограничения:
+— systemd не PID 1 в контейнере: проверен синтаксис unit и запуск команды
+  от нужного пользователя. systemctl start/restart/enable, аварийный
+  перезапуск и автозагрузка после reboot требуют проверки в реальной VM.
+— Установка dotnet-sdk-8.0 через apt на целевой VM отдельно не прогонялась:
+  в этой проверке использовался официальный архив SDK той же ветки .NET 8.
+— Windows PowerShell, SSH, VirtualBox NAT 2222->22 и 8080->80, Bridge
+  и firewall конкретной VM здесь не проверялись. Их пошаговая проверка
+  описана в 00-START.txt и HELP.txt.
+— Предварительная HTTP-проверка ошибочно требовала строчный регистр Location;
+  условие исправлено, приведённый ниже окончательный прогон завершился с кодом 0.
+— Сообщение SDK о проверке workloads ниже не помешало restore/publish;
+  для этого Web API дополнительные workloads не требуются.
+
+ЛОГ ОКОНЧАТЕЛЬНОГО ПРОГОНА
+
+debconf: delaying package configuration, since apt-utils is not installed
+An issue was encountered verifying workloads. For more information, run "dotnet workload update".
+  Determining projects to restore...
+  Restored /home/examstudent/app/examLinux/ExamApi.csproj (in 16.05 sec).
+  ExamApi -> /home/examstudent/app/examLinux/bin/Release/net8.0/ExamApi.dll
+  ExamApi -> /home/examstudent/exam-publish/
+755 root:root /var/www/app
+644 root:root /var/www/app/ExamApi.dll
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+GET http://127.0.0.1:5000/api/health 200
+GET http://127.0.0.1:5000/api/products 200
+POST http://127.0.0.1:5000/api/products 201
+GET http://127.0.0.1:5000/api/products/4 200
+PUT http://127.0.0.1:5000/api/products/4 204
+GET http://127.0.0.1:5000/api/products/4 200
+DELETE http://127.0.0.1:5000/api/products/4 204
+GET http://127.0.0.1:5000/api/products/4 404
+GET http://127.0.0.1:5000/api/categories 200
+POST http://127.0.0.1:5000/api/categories 201
+GET http://127.0.0.1:5000/api/categories/4 200
+PUT http://127.0.0.1:5000/api/categories/4 204
+GET http://127.0.0.1:5000/api/categories/4 200
+DELETE http://127.0.0.1:5000/api/categories/4 204
+GET http://127.0.0.1:5000/api/categories/4 404
+GET http://127.0.0.1:5000/ 404
+GET http://127.0.0.1:5000/swagger 404
+GET http://127.0.0.1:80/api/health 200
+GET http://127.0.0.1:80/api/products 200
+POST http://127.0.0.1:80/api/products 201
+GET http://127.0.0.1:80/api/products/4 200
+PUT http://127.0.0.1:80/api/products/4 204
+GET http://127.0.0.1:80/api/products/4 200
+DELETE http://127.0.0.1:80/api/products/4 204
+GET http://127.0.0.1:80/api/products/4 404
+GET http://127.0.0.1:80/api/categories 200
+POST http://127.0.0.1:80/api/categories 201
+GET http://127.0.0.1:80/api/categories/4 200
+PUT http://127.0.0.1:80/api/categories/4 204
+GET http://127.0.0.1:80/api/categories/4 200
+DELETE http://127.0.0.1:80/api/categories/4 204
+GET http://127.0.0.1:80/api/categories/4 404
+GET http://127.0.0.1:80/ 404
+GET http://127.0.0.1:80/swagger 404
+PASS: 34 HTTP checks, both CRUDs, response data, external Location with :8080
+root      3734 runuser -u examstudent -- env ASPNETCORE_ENVIRONMENT=Production /usr/bin/dotnet /var/www/app/ExamApi.dll
+examstu+  3737 /usr/bin/dotnet /var/www/app/ExamApi.dll
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://127.0.0.1:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /var/www/app
+PASS: owner/permissions, unit syntax, Nginx syntax, non-root API, symbolic chmod
+
+
+ИСТОРИЧЕСКАЯ ПРОВЕРКА ПРЕЖНЕЙ КОНФИГУРАЦИИ
+
 Лог первоначальной изолированной Linux-проверки .NET 6 от 02.10.2026
 Commit fe1426fa7dbb92fd363159a5bd67bb99179c60fa
 

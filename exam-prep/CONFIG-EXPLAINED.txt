@@ -1,0 +1,130 @@
+КОНФИГУРАЦИИ — ЧТО ОЗНАЧАЕТ КАЖДАЯ СТРОКА
+
+Две роли:
+1. Твой обычный пользователь Ubuntu: SSH, git, dotnet publish и процесс API.
+2. root: установка пакетов, копирование публикации и настройка служб через sudo.
+Отдельную учётную запись не создаём. API стартует с обычными правами;
+членство пользователя в группе sudo само по себе не делает процесс root.
+На порт 5000 root не нужен. sudo используется вручную для настройки системы.
+Это простая модель для отдельной учебной VM; обычный пользователь имеет
+доступ к своим домашним файлам, это не изоляция приложения от учётной записи.
+Публикация root:root не позволяет обычному процессу менять свои DLL/config.
+
+examapi.nginx.conf (подключается внутри http штатного /etc/nginx/nginx.conf)
+
+server {                              — начало описания HTTP-сайта.
+    listen 80;                        — принимать HTTP на порту 80.
+    location / {                      — все пути, начинающиеся с /.
+        proxy_pass http://127.0.0.1:5000;
+                                      — переслать запрос API в этой же VM.
+                                        После 5000 нет URI: исходный путь
+                                        /api/... и query сохраняются.
+        proxy_set_header Host $http_host;
+                                      — передать исходный Host с портом.
+                                        При NAT из Windows это 127.0.0.1:8080.
+                                        API использует его в Location после
+                                        POST; клиент получает рабочую ссылку.
+    }                                 — конец location.
+}                                     — конец server.
+
+Точки с запятой заканчивают директивы, фигурные скобки задают вложенность.
+На отдельной VM оставляем один включённый сайт: он обслуживает запросы
+на 80 без дополнительного server_name. Только IPv4 входит в этот сценарий.
+Здесь не нужны Upgrade/Connection, proxy_cache_bypass и настройки WebSocket:
+API принимает обычные HTTP-запросы, кэш не настроен, WebSocket не используется.
+Не нужны forwarded-заголовки: приложение не использует IP клиента, HTTPS
+и middleware ForwardedHeaders. Сейчас клиентский IP в API будет IP Nginx.
+Если появятся HTTPS, авторизация или другие сайты, конфиг надо пересмотреть.
+Это минимальная конфигурация конкретного учебного API.
+
+examapi.service
+
+[Unit]                                — общая информация о службе.
+Description=Exam API                   — понятное название в status.
+After=network.target                  — порядок старта после сетевого target;
+                                        не проверяет наличие интернета.
+[Service]                             — как запускать процесс.
+User=YOUR_USER                        — шаблон имени обычного пользователя.
+                                        Перед установкой заменяем на id -un.
+                                        systemd НЕ подставляет $USER и $HOME.
+                                        Без Group берётся основная группа
+                                        указанного пользователя.
+WorkingDirectory=/var/www/app         — рабочая папка; отсюда читается config.
+ExecStart=/usr/bin/dotnet /var/www/app/ExamApi.dll
+                                      — dotnet запускает опубликованную DLL.
+                                        Type не задан: по умолчанию simple,
+                                        systemd следит за этим процессом.
+Environment=ASPNETCORE_ENVIRONMENT=Production
+                                      — рабочий режим, Swagger выключен.
+Restart=on-failure                    — перезапуск при аварийном завершении;
+                                        systemctl stop не вызывает рестарт.
+RestartSec=5                          — подождать 5 секунд перед перезапуском.
+[Install]                             — параметры включения автозапуска.
+WantedBy=multi-user.target            — enable подключает службу к обычному
+                                        многопользовательскому режиму загрузки.
+
+Пустые строки разделяют блоки для чтения и ничего не запускают.
+Логи stdout/stderr попадают в journal по штатным настройкам systemd Ubuntu.
+Environment с адресом не нужен: адрес уже указан в appsettings.json.
+Порт 5000 больше 1023, root для него не требуется.
+Конфиги /etc/systemd/system/examapi.service и /etc/nginx/sites-available/examapi
+копируются через sudo, принадлежат root и не должны быть доступны API на запись.
+
+appsettings.json (JSON: запятые разделяют поля, {} задают объекты)
+
+"Logging"                             — настройки журналов приложения.
+"LogLevel"                            — минимальные уровни сообщений.
+"Default": "Information"              — писать информационные сообщения и выше.
+"Microsoft.AspNetCore": "Warning"     — для фреймворка писать предупреждения и ошибки.
+"AllowedHosts": "*"                   — принять любой Host для учебного NAT/Bridge.
+"Urls": "http://127.0.0.1:5000"        — API доступен на HTTP 5000 только из Ubuntu;
+                                        внешний вход идёт через Nginx.
+
+Команды управления
+
+daemon-reload — перечитать изменённые unit-файлы; процесс ещё не перезапускает.
+enable — включить старт при загрузке; сам процесс не запускает.
+restart — запустить заново, либо запустить, если ещё не работал.
+status — состояние процесса; is-active и curl подтверждают работу.
+journalctl -u examapi — сообщения именно нашего API.
+nginx -t — проверить весь включённый конфиг до перезапуска.
+После изменения unit: daemon-reload, затем restart examapi.
+После изменения Nginx: nginx -t, только при успехе restart nginx.
+Изменения appsettings.json копируй в публикацию и restart examapi.
+
+Команды файлов
+
+install -d -m 755 — создать каталог с правами 755 (это не установка API).
+cp -a source/. target/ — скопировать содержимое, включая скрытые файлы.
+chown -R root:root — назначить root владельцем и группой публикации.
+find ... -type d -exec chmod 755 {} + — права 755 всем каталогам публикации.
+find ... -type f -exec chmod 644 {} + — права 644 обычным файлам публикации.
+{} — найденные пути, + — передать их chmod группами.
+DLL читается интерпретатором dotnet; запускать apphost ./ExamApi не нужно.
+ln -sfn — создать/обновить символическую ссылку включённого сайта.
+rm -f .../sites-enabled/default — отключить стандартный сайт в учебной VM;
+сам файл sites-available/default сохраняется.
+
+Документация:
+https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass
+https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header
+https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html
+https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html
+https://docs.oracle.com/en/virtualization/virtualbox/7.2/user/networkingdetails.html
+https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install
+
+Установка unit с твоим именем:
+
+whoami и id -un — показывают имя текущего пользователя.
+test "$(id -u)" -ne 0 — проверяет, что его UID не 0 (root).
+sed "s/^User=YOUR_USER$/User=$(id -un)/" examapi.service
+— читает шаблон, заменяет ровно строку User=YOUR_USER на имя пользователя.
+$(id -un) выполняется обычной оболочкой ДО запуска sudo; ^ и $ означают
+начало и конец строки. Исходный файл репозитория не изменяется.
+| sudo tee /etc/systemd/system/examapi.service
+— передаёт результат команде tee, которая через sudo записывает unit в /etc.
+> /dev/null — скрывает повторный вывод tee; установленный файл проверяем cat.
+Именно tee работает от root, поэтому проблемы sudo echo ... > /etc/... нет.
+После установки в unit должна быть строка, например User=student,
+где student — фактический результат whoami. YOUR_USER не должен оставаться.
+Нельзя ставить User=root или запускать шаг под sudo su.
