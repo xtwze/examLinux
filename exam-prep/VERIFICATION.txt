@@ -1,174 +1,34 @@
-ТЕКУЩАЯ ПРОВЕРКА ПАКЕТА — 24.10.2026
-База: origin/main 76c26cfc6b4f41feb942b46319dea4398625ad89.
+ПРОВЕРКА ПАКЕТА — 28.10.2026
+База: origin/main ead41710e8f7783772fff7156ef3d2e9841a2417.
+Изменены только инструкции; API, проект, Nginx и unit не менялись.
+START: 240 → 91 строка; HELP: 304 → 116 строк.
 
-Среда: временный контейнер Ubuntu 22.04.5 LTS, ARM64 (aarch64).
-Официальный .NET SDK 8.0.425 получен с dotnetcli.blob.core.windows.net;
-контрольная сумма Content-MD5 совпала. SDK распакован в /opt/dotnet,
-/usr/bin/dotnet ссылается на него. Nginx/systemd установлены из Ubuntu apt.
-Docker нужен только для этой изолированной проверки, не для экзамена.
+Статически проверено:
+— bash -n для 45 команд START и 48 команд HELP; у каждой есть комментарий.
+— Все ссылки START на номера HELP существуют; JSON корректен.
+— Подстановка User, пути публикации и владельцы согласованы с конфигами.
+— Просмотр diff и git diff --check без ошибок.
 
-Проверено:
-— Чистый dotnet publish ExamApi.csproj -c Release -o /home/examstudent/exam-publish
-  от обычного пользователя examstudent; исходники скопированы в доступную
-  ему папку. Команда завершилась успешно. Контроллеры и модели не менялись.
-— Публикация в /var/www/app: root:root, каталоги 755, файлы 644.
-— Обычный пользователь читает DLL, но не может писать в неё или каталог.
-— Шаблон User=YOUR_USER заменён на User=examstudent перед установкой unit.
-— systemd-analyze verify /etc/systemd/system/examapi.service: код 0.
-— nginx -t: syntax is ok / test is successful.
-— API в Production запущен от examstudent (не root), слушает 127.0.0.1:5000.
-— 34 HTTP-проверки: Health, обе коллекции, создание/чтение/изменение/удаление
-  каждой модели и 404 удалённой записи, ожидаемые 404 на / и /swagger.
-  Весь набор выполнен напрямую на 5000 и через минимальный Nginx на 80.
-— Проверены данные после изменения и Location после POST: исходный Host
-  127.0.0.1:8080 сохранён, путь ведёт на правильную запись. ASP.NET Core
-  формирует /api/Products и /api/Categories; маршруты принимают оба регистра.
-— chmod 644 -> u-r -> g+w -> a-r: получены 244 -> 264 -> 220.
-— JSON, подстановка имени через sed, согласованность актуальных документов,
-  ссылки README, синтаксис команд и git diff --check: успешно.
+Изолированная Linux-проверка: Ubuntu 22.04 и 24.04, ARM64.
+Оба прогона завершились с кодом 0; SDK из apt — 8.0.132.
+— Установка git, curl, nginx, openssh-server, dotnet-sdk-8.0 из apt.
+— dotnet publish от examstudent, без root, успешное восстановление NuGet.
+— /var/www/app: root:root; каталоги 755, DLL 644; пользователь читает DLL,
+  но не может писать в неё. chmod a=r,u+w задаёт точный режим 644.
+— Подстановка User=examstudent; systemd-analyze verify успешно.
+— nginx -t успешно; API в Production работает от examstudent.
+— Шесть успешных GET: health/products/categories на 5000 и через Nginx :80.
+— Четыре ожидаемых 404: / и /swagger на обоих портах.
+— SSH: sshd -t, запуск слушателя, ED25519 fingerprint по сети совпадает
+  с локальным; повторный ssh-keygen -A не меняет существующие ключи.
+— chmod u-r → g+w → a-r: 644 → 244 → 264 → 220.
 
 Ограничения:
-— systemd не PID 1 в контейнере: проверен синтаксис unit и запуск команды
-  от нужного пользователя. systemctl start/restart/enable, аварийный
-  перезапуск и автозагрузка после reboot требуют проверки в реальной VM.
-— Установка dotnet-sdk-8.0 через apt на целевой VM отдельно не прогонялась:
-  в этой проверке использовался официальный архив SDK той же ветки .NET 8.
-— Windows PowerShell, SSH, VirtualBox NAT 2222->22 и 8080->80, Bridge
-  и firewall конкретной VM здесь не проверялись. Их пошаговая проверка
-  описана в 00-START.txt и HELP.txt.
-— Предварительная HTTP-проверка ошибочно требовала строчный регистр Location;
-  условие исправлено, приведённый ниже окончательный прогон завершился с кодом 0.
-— Сообщение SDK о проверке workloads ниже не помешало restore/publish;
-  для этого Web API дополнительные workloads не требуются.
-
-ЛОГ ОКОНЧАТЕЛЬНОГО ПРОГОНА
-
-debconf: delaying package configuration, since apt-utils is not installed
-An issue was encountered verifying workloads. For more information, run "dotnet workload update".
-  Determining projects to restore...
-  Restored /home/examstudent/app/examLinux/ExamApi.csproj (in 16.05 sec).
-  ExamApi -> /home/examstudent/app/examLinux/bin/Release/net8.0/ExamApi.dll
-  ExamApi -> /home/examstudent/exam-publish/
-755 root:root /var/www/app
-644 root:root /var/www/app/ExamApi.dll
-nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-nginx: configuration file /etc/nginx/nginx.conf test is successful
-GET http://127.0.0.1:5000/api/health 200
-GET http://127.0.0.1:5000/api/products 200
-POST http://127.0.0.1:5000/api/products 201
-GET http://127.0.0.1:5000/api/products/4 200
-PUT http://127.0.0.1:5000/api/products/4 204
-GET http://127.0.0.1:5000/api/products/4 200
-DELETE http://127.0.0.1:5000/api/products/4 204
-GET http://127.0.0.1:5000/api/products/4 404
-GET http://127.0.0.1:5000/api/categories 200
-POST http://127.0.0.1:5000/api/categories 201
-GET http://127.0.0.1:5000/api/categories/4 200
-PUT http://127.0.0.1:5000/api/categories/4 204
-GET http://127.0.0.1:5000/api/categories/4 200
-DELETE http://127.0.0.1:5000/api/categories/4 204
-GET http://127.0.0.1:5000/api/categories/4 404
-GET http://127.0.0.1:5000/ 404
-GET http://127.0.0.1:5000/swagger 404
-GET http://127.0.0.1:80/api/health 200
-GET http://127.0.0.1:80/api/products 200
-POST http://127.0.0.1:80/api/products 201
-GET http://127.0.0.1:80/api/products/4 200
-PUT http://127.0.0.1:80/api/products/4 204
-GET http://127.0.0.1:80/api/products/4 200
-DELETE http://127.0.0.1:80/api/products/4 204
-GET http://127.0.0.1:80/api/products/4 404
-GET http://127.0.0.1:80/api/categories 200
-POST http://127.0.0.1:80/api/categories 201
-GET http://127.0.0.1:80/api/categories/4 200
-PUT http://127.0.0.1:80/api/categories/4 204
-GET http://127.0.0.1:80/api/categories/4 200
-DELETE http://127.0.0.1:80/api/categories/4 204
-GET http://127.0.0.1:80/api/categories/4 404
-GET http://127.0.0.1:80/ 404
-GET http://127.0.0.1:80/swagger 404
-PASS: 34 HTTP checks, both CRUDs, response data, external Location with :8080
-root      3734 runuser -u examstudent -- env ASPNETCORE_ENVIRONMENT=Production /usr/bin/dotnet /var/www/app/ExamApi.dll
-examstu+  3737 /usr/bin/dotnet /var/www/app/ExamApi.dll
-info: Microsoft.Hosting.Lifetime[14]
-      Now listening on: http://127.0.0.1:5000
-info: Microsoft.Hosting.Lifetime[0]
-      Application started. Press Ctrl+C to shut down.
-info: Microsoft.Hosting.Lifetime[0]
-      Hosting environment: Production
-info: Microsoft.Hosting.Lifetime[0]
-      Content root path: /var/www/app
-PASS: owner/permissions, unit syntax, Nginx syntax, non-root API, symbolic chmod
-
-
-ИСТОРИЧЕСКАЯ ПРОВЕРКА ПРЕЖНЕЙ КОНФИГУРАЦИИ
-
-Лог первоначальной изолированной Linux-проверки .NET 6 от 02.10.2026
-Commit fe1426fa7dbb92fd363159a5bd67bb99179c60fa
-
-После практической репетиции проект переведён на .NET 8. Отдельно успешно
-повторены чистый dotnet publish и запросы Health, Products и Categories
-в официальном Linux-образе SDK 8.0.425. Ниже сохранён подробный исходный
-лог с полным CRUD и Nginx; API-код и конфиги при миграции не менялись.
-
-dotnet-sdk-6.0:
-  Installed: (none)
-  Candidate: 6.0.136-0ubuntu1~22.04.1
-  Version table:
-     6.0.136-0ubuntu1~22.04.1 500
-        500 http://ports.ubuntu.com/ubuntu-ports jammy-updates/main arm64 Packages
-     6.0.135-0ubuntu1~22.04.1 500
-        500 http://ports.ubuntu.com/ubuntu-ports jammy-security/main arm64 Packages
-debconf: delaying package configuration, since apt-utils is not installed
-MSBuild version 17.3.4+a400405ba for .NET
-  Determining projects to restore...
-  Restored /home/examstudent/app/ExamApi.csproj (in 4.28 sec).
-  ExamApi -> /home/examstudent/app/bin/Release/net6.0/ExamApi.dll
-  ExamApi -> /home/examstudent/exam-publish/
-nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-nginx: configuration file /etc/nginx/nginx.conf test is successful
-curl: (7) Failed to connect to 127.0.0.1 port 5000 after 0 ms: Connection refused
-GET http://127.0.0.1:5000/api/health 200
-GET http://127.0.0.1:5000/api/products 200
-POST http://127.0.0.1:5000/api/products 201
-GET http://127.0.0.1:5000/api/products/4 200
-PUT http://127.0.0.1:5000/api/products/4 204
-GET http://127.0.0.1:5000/api/products/4 200
-DELETE http://127.0.0.1:5000/api/products/4 204
-GET http://127.0.0.1:5000/api/products/4 404
-GET http://127.0.0.1:5000/api/categories 200
-POST http://127.0.0.1:5000/api/categories 201
-GET http://127.0.0.1:5000/api/categories/4 200
-PUT http://127.0.0.1:5000/api/categories/4 204
-GET http://127.0.0.1:5000/api/categories/4 200
-DELETE http://127.0.0.1:5000/api/categories/4 204
-GET http://127.0.0.1:5000/api/categories/4 404
-GET http://127.0.0.1:5000/ 404
-GET http://127.0.0.1:5000/swagger 404
-GET http://127.0.0.1:80/api/health 200
-GET http://127.0.0.1:80/api/products 200
-POST http://127.0.0.1:80/api/products 201
-GET http://127.0.0.1:80/api/products/4 200
-PUT http://127.0.0.1:80/api/products/4 204
-GET http://127.0.0.1:80/api/products/4 200
-DELETE http://127.0.0.1:80/api/products/4 204
-GET http://127.0.0.1:80/api/products/4 404
-GET http://127.0.0.1:80/api/categories 200
-POST http://127.0.0.1:80/api/categories 201
-GET http://127.0.0.1:80/api/categories/4 200
-PUT http://127.0.0.1:80/api/categories/4 204
-GET http://127.0.0.1:80/api/categories/4 200
-DELETE http://127.0.0.1:80/api/categories/4 204
-GET http://127.0.0.1:80/api/categories/4 404
-GET http://127.0.0.1:80/ 404
-GET http://127.0.0.1:80/swagger 404
-PASS: health, both CRUD controllers, direct port 5000 and Nginx port 80
-755 root:root /var/www/app
-info: Microsoft.Hosting.Lifetime[14]
-      Now listening on: http://0.0.0.0:5000
-info: Microsoft.Hosting.Lifetime[0]
-      Application started. Press Ctrl+C to shut down.
-info: Microsoft.Hosting.Lifetime[0]
-      Hosting environment: Production
-info: Microsoft.Hosting.Lifetime[0]
-      Content root path: /var/www/app/
+— systemd не PID 1: проверены unit и фактический запуск API, но не
+  systemctl enable/start/reset-failed и не автозагрузка после reboot.
+— Windows PowerShell, парольный SSH-вход, known_hosts Windows,
+  VirtualBox NAT и firewall конкретной VM не проверялись.
+— PowerShell-команды просмотрены; PowerShell здесь не установлен.
+— Полный CRUD в этом пакете не повторялся: бизнес-логика не менялась.
+— Контейнеры использовались только для проверки; Docker не нужен для сдачи
+  и не добавлен в проект. Исторические подробные логи доступны в git.

@@ -1,304 +1,116 @@
-Linux зачёт — помощь при сбоях
+HELP — ОТКРОЙ ТОЛЬКО НУЖНЫЙ НОМЕР ПРИ ОШИБКЕ
+Команды с # выполняются в Ubuntu Bash, кроме явно отмеченного PowerShell.
 
-1. Permission denied при публикации в /var/www/app
-Не запускай весь dotnet publish от root. Из ~/app/examLinux:
-  dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
-  sudo install -d -m 755 /var/www/app
-  sudo cp -a "$HOME/exam-publish/." /var/www/app/
-  sudo chown -R root:root /var/www/app
-  sudo find /var/www/app -type d -exec chmod 755 {} +
-  sudo find /var/www/app -type f -exec chmod 644 {} +
+1. Permission denied / cannot stat при копировании
+Причина: нет sudo, неверный путь или сборка не завершилась.
+Исправление: вернись к шагу 3 START; HOME пишется как "$HOME", не HOME.
+Проверка:
+ls -l "$HOME/exam-publish/ExamApi.dll" /var/www/app/ExamApi.dll # Проверить исходную и установленную DLL.
 
-2. Сервис не работает или Nginx отвечает 502
-  systemctl status examapi --no-pager
-  sudo journalctl -u examapi -n 50 --no-pager
-  curl -v http://127.0.0.1:5000/api/health
-  dotnet --list-runtimes
-  ls -l /usr/bin/dotnet /var/www/app/ExamApi.dll
-  sudo ss -ltnp | grep ':5000'
-Проверь пользователя и доступ к публикации:
-  whoami
-  grep '^User=' /etc/systemd/system/examapi.service
-  test -r /var/www/app/ExamApi.dll
-  test -r /var/www/app/appsettings.json
-  namei -l /var/www/app/ExamApi.dll
-User должен совпадать с твоим обычным пользователем Ubuntu, не root.
-status=217/USER означает проблему с User в unit. Если остался YOUR_USER,
-установи unit заново командой sed из шага 4 в 00-START.txt, затем:
-  sudo systemctl daemon-reload
-  sudo systemctl restart examapi
-Нужен Microsoft.AspNetCore.App 8.0.x. Один .NET Runtime без ASP.NET Core
-недостаточен, SDK 8 включает нужный runtime.
-Если занят 5000, останови свой ручной dotnet run через Ctrl+C.
-Не завершай неизвестный процесс, пока не выяснишь, кому он принадлежит.
-После исправления: sudo systemctl restart examapi.
+2. examapi failed / HTTP 502 / порт 5000 не отвечает
+Причина: неверный User, путь, runtime или порт занят.
+Проверка причины:
+sudo journalctl -u examapi -n 30 --no-pager # Прочитать ошибку запуска API.
+grep '^User=' /etc/systemd/system/examapi.service # Проверить свой логин вместо YOUR_USER (217/USER).
+dotnet --list-runtimes # Нужен Microsoft.AspNetCore.App 8.0.x из SDK 8.
+sudo ss -ltnp 'sport = :5000' # Найти процесс на порту; свой dotnet run останови Ctrl+C.
+Исправление: повтори установку unit из START §4; при ошибке доступа — §1.
+sudo systemctl daemon-reload # Прочитать исправленный unit.
+sudo systemctl reset-failed examapi # Сбросить ограничение стартов после устранения причины.
+sudo systemctl restart examapi # Запустить исправленную службу.
+curl -fS http://127.0.0.1:5000/api/health # Проверить Healthy; при старте повторить через пару секунд.
 
-3. Приложение работает на 5000, но не через 80
-  sudo nginx -t
-  systemctl status nginx --no-pager
-  ls -l /etc/nginx/sites-enabled/
-  sudo tail -n 30 /var/log/nginx/error.log
-  curl -v http://127.0.0.1/api/health
-У включённого сайта должен быть proxy_pass http://127.0.0.1:5000.
-Страница Welcome to nginx означает, что отвечает стандартный сайт.
-В чистой учебной VM удали его ссылку:
-  sudo rm -f /etc/nginx/sites-enabled/default
-  sudo nginx -t
-  sudo systemctl restart nginx
+3. 5000 отвечает, порт 80 нет / Welcome to nginx
+Причина: ошибка конфига или включён стандартный сайт.
+sudo nginx -t # Найти файл и строку ошибки.
+sudo tail -n 20 /var/log/nginx/error.log # Прочитать ошибку прокси.
+Исправление: повтори START §5, не перезагружай Nginx при неуспешном nginx -t.
+curl -fS http://127.0.0.1/api/health # Проверить Healthy через порт 80.
 
-4. apt не находит dotnet-sdk-8.0
-  cat /etc/os-release
-  sudo apt update
-  apt-cache policy dotnet-sdk-8.0
-Для Ubuntu 22.04 и 24.04 проверь ошибки apt update и подключение
-стандартных репозиториев Ubuntu.
-Если установлен другой выпуск Ubuntu или пакеты уже смешаны с Microsoft,
-не добавляй наугад чужой репозиторий 22.04. Сначала выясни выпуск/источники.
-Документация: https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-decision
+4. Unable to locate package dotnet-sdk-8.0
+Причина: не обновлены списки, недоступен репозиторий или выключен компонент Ubuntu.
+cat /etc/os-release # Уточнить выпуск только при сбое: нужен 22.04/24.04.
+sudo apt update # Проверить доступность источников; сначала исправить ошибки загрузки.
+apt-cache policy dotnet-sdk-8.0 # Проверить наличие Candidate.
+Если Candidate отсутствует, включи universe:
+sudo apt install -y software-properties-common # Установить средство управления компонентами apt.
+sudo add-apt-repository -y universe # Включить официальный компонент Ubuntu.
+sudo apt update # Обновить списки после включения.
+sudo apt install -y dotnet-sdk-8.0 # Установить SDK и ASP.NET Core runtime.
+dotnet --version # Проверить 8.0.x.
+Не смешивай источники Microsoft и Ubuntu наугад.
+Документация: https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install
 
-5. Не работает интернет / восстановление NuGet
-  ip -br addr
-  ip route
-  getent hosts github.com
-  curl -I https://github.com
-  curl -I https://api.nuget.org/v3/index.json
-  sudo apt update
-В VirtualBox у NAT должен быть включён «Кабель подключён».
-Интернет в Windows не гарантирует, что сеть настроена внутри VM.
-Для сборки нужен доступ и к GitHub, и к NuGet; для установки — к Ubuntu.
-После восстановления связи повтори publish. Старые Windows bin/obj
-не заменяют установленный Linux SDK и восстановление зависимостей.
-Не используй отключение проверки TLS как исправление ошибки сертификата.
+5. clone / publish: сеть, NuGet или сборка
+Причина: VM без сети, недоступен NuGet либо команда запущена не из проекта.
+ip route # Проверить маршрут по умолчанию.
+getent hosts github.com api.nuget.org # Проверить DNS двух нужных серверов.
+curl -I https://api.nuget.org/v3/index.json # Проверить HTTPS к NuGet.
+Исправление: VirtualBox → NAT → «Кабель подключён»; не отключай TLS-проверку.
+cd "$HOME/app/examLinux" # Вернуться в каталог проекта.
+dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish" # Повторить сборку после исправления.
+Проверка: код завершения 0 и создана ExamApi.dll в exam-publish.
 
-6. curl / и /swagger возвращает 404
-Это ожидаемо: у приложения нет маршрута /, а Swagger включён только
-в Development. Для сдачи используй /api/health и /api/products.
-Для тренировки Swagger из ~/app/examLinux:
-  ASPNETCORE_ENVIRONMENT=Development dotnet run --urls http://127.0.0.1:5001
-Затем в самой VM открой http://127.0.0.1:5001/swagger.
-В Production Swagger для задания не нужен.
+6. 404 на / или /swagger
+Причина: корневого маршрута нет; Swagger выключен в Production. Исправление: правильный URL.
+curl -fS http://127.0.0.1/api/health # Проверить реальный маршрут API: Healthy.
 
-7. В Linux всё отвечает, а в Windows нет
-При обычном NAT НЕ используй гостевой 10.0.2.15 напрямую с Windows.
-Проверь правило TCP: 127.0.0.1:8080 на хосте → порт 80 гостя.
-В PowerShell:
-  Test-NetConnection 127.0.0.1 -Port 8080
-  curl.exe -i http://127.0.0.1:8080/api/health
-Если 8080 занят, выбери свободный порт, например 8081, и поправь URL.
-В Linux:
-  sudo ufw status
-Если firewall активен: sudo ufw allow 80/tcp.
-Порт 5000 открывать в firewall не надо: API слушает только loopback.
+7. Ubuntu отвечает, Windows не отвечает
+Причина: не сохранён NAT, VM выключена, порт занят или UFW блокирует 80.
+Исправление: проверь оба OK из START §0 и адрес с :8080.
+Windows PowerShell:
+Test-NetConnection 127.0.0.1 -Port 8080 # Проверить доступность проброшенного HTTP-порта.
+Ubuntu Bash:
+sudo ufw status # Проверить, активен ли firewall.
+Только если active:
+sudo ufw allow 80/tcp # Разрешить вход к Nginx, не открывая внутренний 5000.
+Windows PowerShell:
+Invoke-RestMethod 'http://127.0.0.1:8080/api/health' # Проверить Healthy после исправления.
 
-Если нужен прямой IP VM, вариант — адаптер 1 NAT для интернета,
-адаптер 2 Host-only («Виртуальный адаптер хоста») с DHCP.
-В Linux найди второй IP через ip -br addr, например 192.168.56.101.
-В Windows: http://192.168.56.101/api/health (IP только пример).
-В Ubuntu Server второй интерфейс может потребовать включения DHCP
-в netplan; поэтому NAT с пробросом проще для основной инструкции.
-Bridged/«Сетевой мост» тоже возможен, но зависит от сети аудитории.
+8. Нужно обновить уже установленный API
+Причина: старые файлы публикации. Сначала успешно повтори publish из START §3.
+sudo systemctl stop examapi # Остановить процесс перед заменой DLL.
+Затем повтори копирование и права из START §3.
+sudo systemctl restart examapi # Запустить новую публикацию; данные в памяти сбросятся.
+curl -fS http://127.0.0.1/api/health # Проверить ответ после обновления.
 
-8. Повторное развёртывание своего проекта
-Из ~/app/examLinux сначала собери новый Release в домашнюю папку:
-  dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
-Только после успешной сборки:
-  sudo systemctl stop examapi
-  sudo cp -a "$HOME/exam-publish/." /var/www/app/
-  sudo chown -R root:root /var/www/app
-  sudo find /var/www/app -type d -exec chmod 755 {} +
-  sudo find /var/www/app -type f -exec chmod 644 {} +
-  sudo systemctl restart examapi
-  curl -fS http://127.0.0.1/api/health
-Содержимое списков после restart сбросится — это ожидаемо.
-Если менял unit: sudo systemctl daemon-reload, затем restart.
+9. destination path already exists
+Причина: проект уже клонирован. Не клонируй внутрь него и не удаляй свои файлы.
+cd "$HOME/app/examLinux" # Перейти в существующий checkout.
+git remote -v # Проверить, что это xtwze/examLinux.
+git status --short # Проверить свои изменения перед обновлением.
+Только если checkout чистый:
+git pull --ff-only # Получить актуальные файлы без перезаписи своей работы.
+ls ExamApi.csproj examapi.service examapi.nginx.conf # Проверить три нужных файла; продолжить START §3 с publish.
 
-9. clone пишет destination path already exists and is not an empty directory
-  pwd
-  ls -la "$HOME/app/examLinux"
-  git -C "$HOME/app/examLinux" remote -v
-Если это уже xtwze/examLinux — используй существующий клон и выполни
-cd "$HOME/app/examLinux".
-Если другой проект — сохрани его отдельно; не удаляй папку вслепую.
+10. Unknown command verb у systemctl
+Причина: опечатка. Исправление:
+sudo systemctl daemon-reload # Перечитать unit; daemon-reload пишется через дефис.
+systemctl status examapi --no-pager # Проверить состояние; запуск — START §4.
 
-10. Полезные команды без ИИ
-  cat /etc/systemd/system/examapi.service
-  cat /etc/nginx/sites-available/examapi
-  stat -c '%a %n' /var/www/app
-  systemctl is-enabled examapi nginx
-  systemctl is-active examapi nginx
-  sudo journalctl -u examapi -n 40 --no-pager
-  history
-Для проверки переживания перезагрузки на тренировке выполни sudo reboot,
-потом проверь оба сервиса и запрос с Windows. Это ещё не проверено за тебя
-в твоей VirtualBox VM.
+11. chmod: убрать чтение владельцу / добавить запись группе / убрать чтение всем
+Причина Permission denied: root владеет файлом, поэтому нужен sudo.
+Тренируйся на отдельном файле, не на DLL работающего API:
+sudo install -m 644 /dev/null /tmp/exam-rights.txt # Создать root-owned учебный файл с исходным режимом 644.
+sudo chmod u-r /tmp/exam-rights.txt # Убрать чтение владельцу, остальные права сохранить: 244.
+sudo chmod g+w /tmp/exam-rights.txt # Добавить запись группе: 264.
+sudo chmod a-r /tmp/exam-rights.txt # Убрать чтение у всех: 220.
+stat -c '%a %U:%G %n' /tmp/exam-rights.txt # Проверить итог 220 root:root.
+u — владелец, g — группа, a — все; + добавить, - убрать, = задать точно.
+Для собственного файла sudo не нужен. Каталогу нужен x для прохода внутрь.
 
-11. Владельцы, sudo, chmod и Operation not permitted
-
-Кто я и кому принадлежит файл:
-  whoami
-  id
-  ls -ld /var/www/app
-  stat -c '%a %U:%G %n' /var/www/app/ExamApi.dll
-  sudo find /var/www/app -user root -type f -print
-  sudo find /var/www/app ! -user root -print
-Первый find показывает root-owned файлы, второй — отклонения от модели.
-У публикации ожидаем root:root, у исходников — твоего обычного пользователя.
-Права 755: u=rwx, g=rx, o=rx; 644: u=rw, g=r, o=r.
-Для каталога r — видеть список имён, x — проходить к файлам, w вместе с x —
-создавать/удалять записи. Для файла x — запускать его как программу.
-Владелец и права — разные вещи: chown меняет владельца, chmod меняет права.
-Право w на файл НЕ даёт права менять его chmod: это делает владелец/root.
-
-Безопасная тренировка буквенного chmod — только на своём временном файле:
-  demo=$(mktemp)
-  chmod 644 "$demo"
-  ls -l "$demo"
-  chmod u-r "$demo"
-  ls -l "$demo"
-  chmod g+w "$demo"
-  ls -l "$demo"
-  chmod a-r "$demo"
-  ls -l "$demo"
-  chmod 600 "$demo"
-  rm "$demo"
-u — владелец, g — группа, o — остальные, a — все три категории.
--r убирает чтение, +w добавляет запись; остальные биты сохраняются.
-Из 644 получатся 244 (-w-r--r--), 264 (-w-rw-r--), 220 (-w--w----).
-Затем 600 возвращает владельцу чтение и запись. Не применяй a-r к проекту!
-Владелец попадает в класс u: после u-r его не спасают r группы/остальных.
-
-sudo выполняет ОДНУ команду с правами root, если твой пользователь допущен.
-  sudo -l
-  sudo -v
-Пароль вводится вслепую. Ошибка not in the sudoers file требует помощи
-администратора; не пытайся обходить доступ. Не держи всё время root-shell.
-Для chmod root-owned публикации нужен sudo; API от root запускать не нужно.
-sudo echo ... > /etc/... не повышает права перенаправления > оболочки:
-для своих конфигов используй sudo cp, sudoedit или ... | sudo tee ПУТЬ.
-
-Operation not permitted при chmod/chown: сначала проверь конкретный путь:
-  stat -c '%a %U:%G %n' /путь/к/файлу
-  namei -l /путь/к/файлу
-  lsattr /путь/к/файлу
-  findmnt -T /путь/к/файлу
-Если ты не владелец — для своего учебного файла повтори chmod через sudo.
-Permission denied может означать отсутствие x у родительского каталога;
-namei показывает права каждого компонента пути.
-Если даже sudo не помогает, проверь i (immutable) и a (append-only) в lsattr,
-ro (read-only) и тип ФС в findmnt. Не снимай защиту вслепую.
-Shared folder VirtualBox (vboxsf), NTFS/FAT/CIFS могут не поддерживать обычные
-Unix-права: перенеси проект в $HOME/app на Linux-ФС и повтори проверку.
-Read-only file system требует исправления состояния ФС, chmod не поможет.
-Не используй chmod 777 и рекурсивный chown на /, /etc или чужих каталогах.
-Если раньше собирал с sudo, сначала найди root-owned файлы в исходниках:
-  find "$HOME/app/examLinux" -user root -print
-Только если это ТВОЙ клон, верни его своему пользователю:
-  sudo chown -R "$(id -un):$(id -gn)" "$HOME/app/examLinux"
-После этого публикуй без sudo. Владельца /var/www/app оставь root.
-
-12. SSH, NAT, Bridge, IP Ubuntu и localhost
-
-Если ssh.service не запускается, работай из консоли VirtualBox:
-  sudo systemctl status ssh --no-pager -l
-  sudo journalctl -u ssh -b -n 50 --no-pager
-  sudo /usr/sbin/sshd -t
-sshd -t проверяет конфигурацию и доступность ключей; успех — без вывода.
-При no hostkeys available / Unable to load host key создай отсутствующие
-ключи сервера (существующие ключи эта команда не заменяет):
-  sudo ssh-keygen -A
-При Missing privilege separation directory: /run/sshd:
-  sudo install -d -o root -g root -m 0755 /run/sshd
-/run временный: каталог может исчезнуть после перезагрузки; штатный запуск
-службы Ubuntu создаёт его снова. Если ошибка повторяется, проверь журнал
-и установленный пакет openssh-server, не меняй unit приложения.
-После исправления причины повтори проверку:
-  sudo /usr/sbin/sshd -t
-Только если ошибок больше нет:
-  sudo systemctl reset-failed ssh
-  sudo systemctl enable --now ssh
-  sudo systemctl status ssh --no-pager -l
-  sudo ss -ltnp | grep ':22[[:space:]]'
-Ожидается active (running) и слушатель порта 22 на адресе, доступном через
-сетевой адаптер VM, а не только на 127.0.0.1. reset-failed сбрасывает
-состояние ошибки/лимит запусков, но саму причину сбоя не исправляет.
-Если менял конфигурацию уже работающего SSH: после успешного sshd -t
-выполни sudo systemctl restart ssh и снова проверь status/порт.
-
-localhost / 127.0.0.1 — «эта машина». В Windows это Windows, в Ubuntu — Ubuntu.
-NAT скрывает VM за хостом, но даёт ей исходящий доступ в интернет.
-Адрес Ubuntu найди внутри Ubuntu: ip -br -4 addr; маршрут: ip route.
-127.0.0.1 на lo — loopback. 10.0.2.15 часто адрес NAT, но не гарантирован;
-при обычном NAT Windows обращается через проброс, а не к этому IP напрямую.
-
-Два правила TCP в настройках ИМЕННО ТВОЕЙ VM:
-  127.0.0.1:2222 хоста -> гостевой :22 (SSH)
-  127.0.0.1:8080 хоста -> гостевой :80 (Nginx)
-Guest IP при стандартном DHCP пустой. Не путай NAT и отдельную «Сеть NAT».
-Проверка NAT 2222 -> 22: сначала добейся работающего ssh и слушателя :22
-в консоли Ubuntu (команды выше), затем проверь, что у запущенной VM
-адаптер 1 именно NAT, «Кабель подключён», правило включено и содержит
-TCP / 127.0.0.1 / 2222 / пустой IP гостя / 22.
-Если указан IP гостя, он должен совпадать с текущим IP Ubuntu; проще
-оставить его пустым при стандартном DHCP. Не ставь гостевой порт 2222.
-В Ubuntu проверь sudo ufw status; при активном UFW: sudo ufw allow 22/tcp.
-В Windows выполни Test-NetConnection ниже. TcpTestSucceeded: True означает
-доступность TCP, но вход SSH проверяется следующей командой ssh -v.
-Если :22 в Ubuntu слушает, а тест Windows не проходит, проверь правило
-именно этой VM, запущенное состояние и конфликт порта 2222 на хосте
-(команда Get-NetTCPConnection в конце пункта).
-Пример PowerShell, student заменяется на whoami из Ubuntu:
-  Test-NetConnection 127.0.0.1 -Port 2222
-  ssh -v -p 2222 student@127.0.0.1
-  Test-NetConnection 127.0.0.1 -Port 8080
-  curl.exe -i http://127.0.0.1:8080/api/health
-После SSH можно продолжать настройку Linux из Windows, копируя команды.
-
-Bridge / «Сетевой мост» делает VM отдельным участником сети роутера.
-Выбери реальный Wi-Fi/Ethernet адаптер хоста и получи IP в Ubuntu:
-  ip -br -4 addr
-  ip route
-Если Ubuntu получила, например, 192.168.1.42, в Windows:
-  ssh student@192.168.1.42
-  curl.exe -i http://192.168.1.42/api/health
-Здесь SSH по 22 и HTTP по 80; порты 2222/8080 из NAT не используются.
-IP только пример, бери свой. В аудитории DHCP, Wi-Fi или изоляция клиентов
-могут мешать Bridge; основной воспроизводимый сценарий — NAT с пробросом.
-IP Windows (ipconfig) и IP Ubuntu (ip -br -4 addr) — разные адреса.
-Не открывай 5000 наружу: Nginx достаёт API по loopback внутри Ubuntu.
-
-Проверяй соединение снизу вверх:
-  В консоли Ubuntu: systemctl status ssh --no-pager
-  sudo ss -ltnp | grep -E ':(22|80|5000)[[:space:]]'
-  sudo journalctl -u ssh -n 30 --no-pager
-  sudo ufw status
-  curl -fS http://127.0.0.1:5000/api/health
-  curl -fS http://127.0.0.1/api/health
-Если UFW активен, разреши 22/tcp и 80/tcp; UFW не выключай.
-При NAT UFW в госте видит порты 22 и 80, не хостовые 2222/8080.
-Connection refused — по адресу нет слушателя/проброса либо явный reject;
-timeout — проверь VM, адрес, маршрут, firewall и правило NAT.
-Permission denied (publickey,password) в SSH — сеть уже работает:
-проверь имя из whoami, пароль/ключ и журнал ssh; не меняй Nginx.
-502 от Nginx — HTTP дошёл до Ubuntu, ищи причину в API/systemd.
-HTTP 404 на / — проверь именно /api/health.
-Ping может блокироваться и не заменяет Test-NetConnection нужного порта.
-Если порт хоста занят, PowerShell покажет слушателя:
-  Get-NetTCPConnection -LocalPort 2222,8080 -State Listen -ErrorAction SilentlyContinue
-Не завершай чужой процесс; смени хостовый порт и команды подключения.
-Если после переустановки VM или смены host keys SSH сообщает
-REMOTE HOST IDENTIFICATION HAS CHANGED, не принимай новый ключ вслепую.
-В консоли своей Ubuntu (не через подозрительное SSH-соединение):
-  sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256
-Сверь SHA256-отпечаток и тип ключа с сообщением клиента Windows.
-Если клиент показывает RSA/ECDSA, проверь соответствующий .pub-файл:
-  sudo ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub -E sha256
-  sudo ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub -E sha256
-Отсутствующий .pub не проверяй; используй тип, показанный клиентом.
-Только после подтверждения своей VM удали старую запись в PowerShell:
-  ssh-keygen -F "[127.0.0.1]:2222" -f "$env:USERPROFILE\.ssh\known_hosts"
-  ssh-keygen -R "[127.0.0.1]:2222" -f "$env:USERPROFILE\.ssh\known_hosts"
-  ssh -p 2222 student@127.0.0.1
-student замени на имя из whoami. Ещё раз сверь отпечаток перед yes.
-Для Bridge удаляй запись фактического IP/имени, для другого NAT-порта —
-"[127.0.0.1]:НОВЫЙ_ПОРТ". Если SSH указывает другой known_hosts, используй
-именно этот файл. Не удаляй весь known_hosts и не отключай проверку ключей.
+12. SSH не запускается / Windows не подключается
+Причина: ключи, /run/sshd, ошибочный конфиг, NAT или firewall.
+sudo /usr/sbin/sshd -t # Получить точную ошибку; нет вывода — синтаксис исправен.
+sudo journalctl -u ssh -n 30 --no-pager # Прочитать причину failed.
+Исправление host keys, /run/sshd, reset-failed и смены ключа Windows —
+ПОЛНОСТЬЮ в START §2. Не удаляй существующие ключи сервера.
+sudo ss -ltnp 'sport = :22' # Проверить слушатель после запуска ssh.
+sudo ufw status # Проверить firewall; если active, выполни следующую команду.
+sudo ufw allow 22/tcp # Разрешить SSH в активном firewall.
+Windows PowerShell:
+Test-NetConnection 127.0.0.1 -Port 2222 # Проверить NAT 2222 → 22; ожидается TcpTestSucceeded True.
+Если ssh не найден: Параметры Windows → Дополнительные компоненты → OpenSSH Client.
+Permission denied при входе: используй логин whoami и пароль Ubuntu, не Windows.
+Проверка: SSH-вход по START §2. При несовпадении fingerprint не вводи yes.
+Документация: https://man.openbsd.org/ssh-keygen
