@@ -41,22 +41,21 @@ ssh -p 2222 "$login@127.0.0.1" # Сверить новый ED25519 SHA256 с VM;
 Несовпадение — не подтверждай; другие ошибки подключения → HELP §12.
 
 3. ПРОЕКТ И ПУБЛИКАЦИЯ — Ubuntu Bash (после SSH-входа либо в консоли VM)
+Если API уже установлен, сначала обновление по HELP §8, без переустановки ОС.
 mkdir -p "$HOME/app" # Создать папку исходников своего пользователя.
 git clone https://github.com/xtwze/examLinux.git "$HOME/app/examLinux" # Скачать проект; папка уже есть → HELP §9.
-cd "$HOME/app/examLinux" # Перейти к ExamApi.csproj и шаблонам конфигурации.
-dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish" # Собрать API без sudo; ошибка → HELP §5.
-sudo install -d -m 755 /var/www/app # Создать каталог размещения API.
-sudo cp -a "$HOME/exam-publish/." /var/www/app/ # Скопировать весь результат успешной сборки.
-sudo chown -R root:root /var/www/app # Передать файлы root, чтобы API не менял свою публикацию.
-sudo find /var/www/app -type d -exec chmod 755 {} + # Разрешить проход и чтение каталогов всем, запись только владельцу.
-sudo find /var/www/app -type f -exec chmod a=r,u+w {} + # Задать файлам чтение всем и запись владельцу (644).
-Ошибка доступа → HELP §1; точечные chmod → HELP §11.
+cd "$HOME/app/examLinux" # Перейти к ExamApi.csproj и шаблонам конфигурации; ошибка → HELP §9.
+test "$(id -u)" -ne 0 # Убедиться, что работаешь обычным пользователем; при ошибке выйди из root.
+sudo install -d -m 755 -o "$(id -un)" -g "$(id -gn)" /var/www/app # Один раз создать каталог 755 с собой как владельцем.
+dotnet publish ExamApi.csproj -c Release -o /var/www/app # Собрать прямо в каталог задания без sudo; ошибка → HELP §1 или §5.
+Путь /var/www/app и режим каталога 755 прямо требуются заданием.
 
 4. SYSTEMD — Ubuntu Bash (тот же обычный пользователь)
 sed "s/^User=YOUR_USER$/User=$(id -un)/" examapi.service | sudo tee /etc/systemd/system/examapi.service > /dev/null # Подставить свой логин и установить службу.
 cat /etc/systemd/system/examapi.service # Проверить User=свой_логин, пути /var/www/app и /usr/bin/dotnet; не root/YOUR_USER.
 sudo systemctl daemon-reload # Перечитать установленный unit.
-sudo systemctl enable --now examapi # Запустить API и включить его при загрузке.
+sudo systemctl enable examapi # Включить запуск API при загрузке.
+sudo systemctl restart examapi # Запустить API с установленным unit, в том числе при повторной настройке.
 systemctl status examapi --no-pager # Проверить active (running); ошибка → HELP §2.
 curl -fS http://127.0.0.1:5000/api/health # Проверить API напрямую: JSON Healthy; при старте повторить через пару секунд.
 ps -o user,pid,args -p "$(systemctl show -p MainPID --value examapi)" # Проверить, что процесс работает от своего логина.
@@ -87,5 +86,5 @@ history # Показать команды, выполненные в этом и
 history -a # Сохранить команды этого сеанса в историю пользователя.
 history > "$HOME/exam-history.txt" # Сохранить копию для показа комиссии.
 На тренировке после перезагрузки повтори SSH и три запроса из Windows.
-Для защиты: systemd держит API от моего пользователя; root владеет файлами;
+Для защиты: systemd держит API от моего пользователя; он же владеет публикацией;
 Nginx :80 → API 127.0.0.1:5000; NAT Windows :8080 → VM :80. Данные в памяти.

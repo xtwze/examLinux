@@ -1,11 +1,16 @@
 HELP — ОТКРОЙ ТОЛЬКО НУЖНЫЙ НОМЕР ПРИ ОШИБКЕ
 Команды с # выполняются в Ubuntu Bash, кроме явно отмеченного PowerShell.
 
-1. Permission denied / cannot stat при копировании
-Причина: нет sudo, неверный путь или сборка не завершилась.
-Исправление: вернись к шагу 3 START; HOME пишется как "$HOME", не HOME.
-Проверка:
-ls -l "$HOME/exam-publish/ExamApi.dll" /var/www/app/ExamApi.dll # Проверить исходную и установленную DLL.
+1. Permission denied при publish / служба не читает DLL
+Причина: осталась публикация root:root от прежней инструкции.
+Не переустанавливай Ubuntu. Останови старый процесс и передай только каталог API себе:
+sudo systemctl stop examapi # Остановить API, если он уже установлен; Unit not loaded означает, что службы ещё нет.
+sudo chown -R "$(id -un):$(id -gn)" /var/www/app # Исправить владельца прежних файлов API.
+sudo chmod 755 /var/www/app # Восстановить требуемый режим каталога.
+cd "$HOME/app/examLinux" # Перейти в исходники своего пользователя.
+dotnet publish ExamApi.csproj -c Release -o /var/www/app # Повторить сборку без sudo.
+ls -l /var/www/app/ExamApi.dll # Убедиться, что DLL создана и принадлежит тебе.
+Продолжи START §4: установка unit и restart применят изменения.
 
 2. examapi failed / HTTP 502 / порт 5000 не отвечает
 Причина: неверный User, путь, runtime или порт занят.
@@ -48,8 +53,8 @@ getent hosts github.com api.nuget.org # Проверить DNS двух нужн
 curl -I https://api.nuget.org/v3/index.json # Проверить HTTPS к NuGet.
 Исправление: VirtualBox → NAT → «Кабель подключён»; не отключай TLS-проверку.
 cd "$HOME/app/examLinux" # Вернуться в каталог проекта.
-dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish" # Повторить сборку после исправления.
-Проверка: код завершения 0 и создана ExamApi.dll в exam-publish.
+dotnet publish ExamApi.csproj -c Release -o /var/www/app # Повторить сборку после исправления.
+Проверка: код завершения 0 и создана /var/www/app/ExamApi.dll.
 
 6. 404 на / или /swagger
 Причина: корневого маршрута нет; Swagger выключен в Production. Исправление: правильный URL.
@@ -68,11 +73,14 @@ Windows PowerShell:
 Invoke-RestMethod 'http://127.0.0.1:8080/api/health' # Проверить Healthy после исправления.
 
 8. Нужно обновить уже установленный API
-Причина: старые файлы публикации. Сначала успешно повтори publish из START §3.
-sudo systemctl stop examapi # Остановить процесс перед заменой DLL.
-Затем повтори копирование и права из START §3.
-sudo systemctl restart examapi # Запустить новую публикацию; данные в памяти сбросятся.
-curl -fS http://127.0.0.1/api/health # Проверить ответ после обновления.
+ОС и NAT сохраняются. Если файлы принадлежат root — сначала §1.
+cd "$HOME/app/examLinux" # Перейти в уже клонированный репозиторий.
+git status --short # Проверить свои изменения; следующая команда только при чистом checkout.
+git pull --ff-only # Получить актуальную инструкцию и исходники.
+sudo systemctl stop examapi # Остановить API перед записью в его DLL.
+dotnet publish ExamApi.csproj -c Release -o /var/www/app # Собрать прямо в каталог задания без sudo.
+Только после успешной сборки: повтори установку unit из START §4
+и Nginx из START §5; restart применит обновления. При ошибке сборки — §5.
 
 9. destination path already exists
 Причина: проект уже клонирован. Не клонируй внутрь него и не удаляй свои файлы.
