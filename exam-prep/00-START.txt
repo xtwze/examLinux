@@ -47,9 +47,13 @@ dotnet --version
 
 В Ubuntu:
   sudo systemctl enable --now ssh
+  sudo systemctl status ssh --no-pager -l
   whoami
   ip -br -4 addr
   sudo ss -ltnp | grep ':22[[:space:]]'
+Ожидается active (running) и слушатель :22. Если служба не запускается,
+открой HELP.txt, пункт 12: sshd -t, отсутствующие host keys, /run/sshd
+и повторный запуск после reset-failed. Не переходи к Windows до исправления.
 Если UFW активен (sudo ufw status): sudo ufw allow 22/tcp.
 
 В PowerShell Windows замени student на результат whoami в Ubuntu:
@@ -66,7 +70,8 @@ exit завершает SSH и возвращает в Windows. Дальнейш
 вводи в одном интерактивном Bash, чтобы они остались в history.
 Если ssh не найден в Windows, включи компонент OpenSSH Client:
 Параметры Windows → Дополнительные компоненты → Добавить компонент.
-Сеть Bridge и диагностика — HELP.txt, пункты 7 и 12.
+SSH, смена ключей и known_hosts Windows, диагностика NAT 2222 -> 22
+и сеть Bridge — HELP.txt, пункт 12. HTTP через NAT 8080 -> 80 — пункт 7.
 
 2. КЛОНИРУЙ РЕПОЗИТОРИЙ В ОДНО ФИКСИРОВАННОЕ МЕСТО
 

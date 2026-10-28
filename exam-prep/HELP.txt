@@ -198,6 +198,32 @@ Read-only file system требует исправления состояния �
 
 12. SSH, NAT, Bridge, IP Ubuntu и localhost
 
+Если ssh.service не запускается, работай из консоли VirtualBox:
+  sudo systemctl status ssh --no-pager -l
+  sudo journalctl -u ssh -b -n 50 --no-pager
+  sudo /usr/sbin/sshd -t
+sshd -t проверяет конфигурацию и доступность ключей; успех — без вывода.
+При no hostkeys available / Unable to load host key создай отсутствующие
+ключи сервера (существующие ключи эта команда не заменяет):
+  sudo ssh-keygen -A
+При Missing privilege separation directory: /run/sshd:
+  sudo install -d -o root -g root -m 0755 /run/sshd
+/run временный: каталог может исчезнуть после перезагрузки; штатный запуск
+службы Ubuntu создаёт его снова. Если ошибка повторяется, проверь журнал
+и установленный пакет openssh-server, не меняй unit приложения.
+После исправления причины повтори проверку:
+  sudo /usr/sbin/sshd -t
+Только если ошибок больше нет:
+  sudo systemctl reset-failed ssh
+  sudo systemctl enable --now ssh
+  sudo systemctl status ssh --no-pager -l
+  sudo ss -ltnp | grep ':22[[:space:]]'
+Ожидается active (running) и слушатель порта 22 на адресе, доступном через
+сетевой адаптер VM, а не только на 127.0.0.1. reset-failed сбрасывает
+состояние ошибки/лимит запусков, но саму причину сбоя не исправляет.
+Если менял конфигурацию уже работающего SSH: после успешного sshd -t
+выполни sudo systemctl restart ssh и снова проверь status/порт.
+
 localhost / 127.0.0.1 — «эта машина». В Windows это Windows, в Ubuntu — Ubuntu.
 NAT скрывает VM за хостом, но даёт ей исходящий доступ в интернет.
 Адрес Ubuntu найди внутри Ubuntu: ip -br -4 addr; маршрут: ip route.
@@ -208,6 +234,18 @@ NAT скрывает VM за хостом, но даёт ей исходящий
   127.0.0.1:2222 хоста -> гостевой :22 (SSH)
   127.0.0.1:8080 хоста -> гостевой :80 (Nginx)
 Guest IP при стандартном DHCP пустой. Не путай NAT и отдельную «Сеть NAT».
+Проверка NAT 2222 -> 22: сначала добейся работающего ssh и слушателя :22
+в консоли Ubuntu (команды выше), затем проверь, что у запущенной VM
+адаптер 1 именно NAT, «Кабель подключён», правило включено и содержит
+TCP / 127.0.0.1 / 2222 / пустой IP гостя / 22.
+Если указан IP гостя, он должен совпадать с текущим IP Ubuntu; проще
+оставить его пустым при стандартном DHCP. Не ставь гостевой порт 2222.
+В Ubuntu проверь sudo ufw status; при активном UFW: sudo ufw allow 22/tcp.
+В Windows выполни Test-NetConnection ниже. TcpTestSucceeded: True означает
+доступность TCP, но вход SSH проверяется следующей командой ssh -v.
+Если :22 в Ubuntu слушает, а тест Windows не проходит, проверь правило
+именно этой VM, запущенное состояние и конфликт порта 2222 на хосте
+(команда Get-NetTCPConnection в конце пункта).
 Пример PowerShell, student заменяется на whoami из Ubuntu:
   Test-NetConnection 127.0.0.1 -Port 2222
   ssh -v -p 2222 student@127.0.0.1
@@ -247,6 +285,20 @@ Ping может блокироваться и не заменяет Test-NetConn
 Если порт хоста занят, PowerShell покажет слушателя:
   Get-NetTCPConnection -LocalPort 2222,8080 -State Listen -ErrorAction SilentlyContinue
 Не завершай чужой процесс; смени хостовый порт и команды подключения.
-Если после переустановки VM SSH сообщает REMOTE HOST IDENTIFICATION HAS
-CHANGED, сначала сверяй новый fingerprint в консоли Ubuntu. Только после
-подтверждения своей VM удали старый ключ: ssh-keygen -R "[127.0.0.1]:2222".
+Если после переустановки VM или смены host keys SSH сообщает
+REMOTE HOST IDENTIFICATION HAS CHANGED, не принимай новый ключ вслепую.
+В консоли своей Ubuntu (не через подозрительное SSH-соединение):
+  sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256
+Сверь SHA256-отпечаток и тип ключа с сообщением клиента Windows.
+Если клиент показывает RSA/ECDSA, проверь соответствующий .pub-файл:
+  sudo ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub -E sha256
+  sudo ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub -E sha256
+Отсутствующий .pub не проверяй; используй тип, показанный клиентом.
+Только после подтверждения своей VM удали старую запись в PowerShell:
+  ssh-keygen -F "[127.0.0.1]:2222" -f "$env:USERPROFILE\.ssh\known_hosts"
+  ssh-keygen -R "[127.0.0.1]:2222" -f "$env:USERPROFILE\.ssh\known_hosts"
+  ssh -p 2222 student@127.0.0.1
+student замени на имя из whoami. Ещё раз сверь отпечаток перед yes.
+Для Bridge удаляй запись фактического IP/имени, для другого NAT-порта —
+"[127.0.0.1]:НОВЫЙ_ПОРТ". Если SSH указывает другой known_hosts, используй
+именно этот файл. Не удаляй весь known_hosts и не отключай проверку ключей.
