@@ -20,7 +20,7 @@
 | [CONFIG-EXPLAINED.txt](exam-prep/CONFIG-EXPLAINED.txt) | Каждая строка Nginx, systemd и appsettings простыми словами |
 | [HELP.txt](exam-prep/HELP.txt) | Диагностика ошибок сборки, сервиса, Nginx и сети |
 | [WINDOWS.ps1](exam-prep/WINDOWS.ps1) | Демонстрация Health Check и CRUD обеих моделей |
-| [AUDIT.txt](exam-prep/AUDIT.txt) | Соответствие текущей схемы требованиям задания |
+| [AUDIT.txt](exam-prep/AUDIT.txt) | Сопоставление исходного репозитория с каждым требованием задания |
 | [VERIFICATION.txt](exam-prep/VERIFICATION.txt) | Лог проверки исходного API в Linux |
 | [AI.txt](exam-prep/AI.txt) | Сетевой и локальный ИИ для подсказок |
 | [AI-CONTEXT.txt](exam-prep/AI-CONTEXT.txt) | Готовый контекст для чата |
@@ -28,21 +28,37 @@
 
 ## Основные команды
 
-Все команды с короткими комментариями находятся в [00-START.txt](exam-prep/00-START.txt).
-Используй её как единственный маршрут установки, без переключения между файлами.
+Установка и клонирование в фиксированную папку:
 
-Задание прямо требует **`/var/www/app` с правами `755`** —
-[точный текст](exam-prep/REQUIREMENTS.txt). Поэтому этот путь сохранён.
-Каталог один раз создаётся через `sudo install -d -m 755` с текущим
-обычным пользователем как владельцем. Затем `dotnet publish` пишет прямо
-в `/var/www/app` **без sudo**, промежуточных папок и копирования.
-Тот же пользователь запускает API через systemd; `User=YOUR_USER`
-в шаблоне заменяется автоматически при установке. Учётные записи не создаются.
+```bash
+sudo apt update
+sudo apt install -y git curl nginx dotnet-sdk-8.0
+mkdir -p "$HOME/app"
+git clone https://github.com/xtwze/examLinux.git "$HOME/app/examLinux"
+cd "$HOME/app/examLinux"
+```
 
-Если уже выполнял прежнюю инструкцию, **переустанавливать Ubuntu не нужно**:
-[HELP §1](exam-prep/HELP.txt) исправляет старого владельца root:root,
-[HELP §8](exam-prep/HELP.txt) описывает обновление существующей установки.
+Если репозиторий уже клонирован в `~/app/examLinux`, повторять `git clone`
+не нужно. Все дальнейшие команды используют этот точный путь.
 
+Сборка выполняется обычным пользователем, копирование — через `sudo`:
+
+```bash
+dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
+sudo install -d -m 755 /var/www/app
+sudo cp -a "$HOME/exam-publish/." /var/www/app/
+sudo chown -R root:root /var/www/app
+sudo find /var/www/app -type d -exec chmod 755 {} +
+sudo find /var/www/app -type f -exec chmod 644 {} +
+```
+
+Далее выполни шаги systemd и Nginx из шпаргалки. Готовые конфиги находятся
+в корне: `examapi.service` и `examapi.nginx.conf`.
+Шаг 4 подставляет имя твоего обычного пользователя Ubuntu в `User=`:
+от него systemd запускает API. Отдельную учётную запись создавать не нужно.
+В шаблоне unit стоит `User=YOUR_USER`; установи его через команду `sed`
+из шпаргалки, чтобы заменить шаблон своим именем. `root` владеет публикацией,
+а обычный пользователь читает файлы 644 и проходит в каталоги 755.
 API слушает только `127.0.0.1:5000`; снаружи доступен Nginx на 80.
 
 Схема запроса при NAT VirtualBox:
@@ -51,7 +67,22 @@ API слушает только `127.0.0.1:5000`; снаружи доступе�
 Windows 127.0.0.1:8080 → Linux Nginx :80 → ExamApi :5000
 ```
 
-Проброс обоих портов, SSH и проверка Windows полностью включены в START.
+Создай правило проброса TCP с IP хоста `127.0.0.1`, портом хоста `8080`
+и портом гостя `80`. IP гостя при стандартном DHCP оставь пустым.
+Для SSH добавь второе правило TCP `127.0.0.1:2222 → гостевой :22`,
+установи `openssh-server` и включи `ssh` по шагу 2 шпаргалки.
+В Windows: `ssh -p 2222 student@127.0.0.1`, где `student` — имя из `whoami`
+в Ubuntu. Для SSH и запуска API используется один и тот же обычный пользователь Ubuntu.
+Диагностика HTTP и SSH через NAT — [HELP.txt](exam-prep/HELP.txt), пункты 7 и 12.
+
+После развёртывания проверь в PowerShell:
+
+```powershell
+$base = 'http://127.0.0.1:8080'
+Invoke-RestMethod "$base/api/health"
+Invoke-RestMethod "$base/api/products"
+Invoke-RestMethod "$base/api/categories"
+```
 
 ## Маршруты
 
@@ -71,7 +102,7 @@ Windows 127.0.0.1:8080 → Linux Nginx :80 → ExamApi :5000
 для отдельной локальной тренировки можно запустить:
 
 ```bash
-ASPNETCORE_ENVIRONMENT=Development dotnet run --urls http://127.0.0.1:5001 # Запустить тренировочный Swagger на отдельном порту.
+ASPNETCORE_ENVIRONMENT=Development dotnet run --urls http://127.0.0.1:5001
 ```
 
 Swagger будет доступен внутри VM на `http://127.0.0.1:5001/swagger`.
@@ -80,7 +111,9 @@ Swagger будет доступен внутри VM на `http://127.0.0.1:5001/
 ## Что проверено
 
 Результаты текущего пакета и границы проверки записаны в
-[VERIFICATION.txt](exam-prep/VERIFICATION.txt). [AUDIT.txt](exam-prep/AUDIT.txt) сопоставляет текущую схему с заданием. Проверку SSH, NAT/Bridge и
+[VERIFICATION.txt](exam-prep/VERIFICATION.txt). Исторический аудит
+[AUDIT.txt](exam-prep/AUDIT.txt) описывает прежние конфиги и не является
+подтверждением проверки текущей версии. Проверку SSH, NAT/Bridge и
 автозапуска после reboot выполняй в своей VM по шпаргалке.
 
 .NET 8 используется, потому что он доступен в Ubuntu 24.04, на которой
