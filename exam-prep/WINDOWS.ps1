@@ -1,7 +1,7 @@
 # Open in Notepad and paste blocks into Windows PowerShell.
-# For NAT: host 8080 -> guest 80. For host-only replace with the VM IP.
+# For NAT: host 80 -> guest 80. For host-only replace with the VM IP.
 $ErrorActionPreference = 'Stop'
-$base = 'http://127.0.0.1:8080'
+$base = 'http://127.0.0.1:80'
 
 # Health and both collections
 Invoke-RestMethod "$base/api/health"

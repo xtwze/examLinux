@@ -6,7 +6,8 @@ Ubuntu: обычный пользователь с sudo, не root. Пароль
 Выключи VM → Настроить → Сеть → Адаптер 1 → NAT → Дополнительно →
 Проброс портов. Добавь два правила (IP гостя оставь пустым):
   ssh: TCP | IP хоста 127.0.0.1 | порт хоста 2222 | порт гостя 22
-  api: TCP | IP хоста 127.0.0.1 | порт хоста 8080 | порт гостя 80
+  api: TCP | IP хоста 127.0.0.1 | порт хоста 80 | порт гостя 80
+Используй порт хоста 80, если он свободен на Windows; если занят — HELP §7.
 Нажми OK в пробросе, затем OK в настройках VM: сохрани ОБА окна. Запусти VM.
 
 1. УСТАНОВКА — Ubuntu Bash (терминал внутри VM)
@@ -19,7 +20,8 @@ sudo /usr/sbin/sshd -t # Проверить конфигурацию SSH; усп
 Если no hostkeys available / отсутствуют host keys:
 sudo ssh-keygen -A # Создать ТОЛЬКО отсутствующие ключи сервера; существующие сохраняются.
 Если Missing privilege separation directory: /run/sshd:
-sudo install -d -m 755 -o root -g root /run/sshd # Создать служебный каталог SSH до запуска.
+sudo mkdir -p /run/sshd # Создать служебную папку SSH.
+sudo chmod 755 /run/sshd # Разрешить чтение и проход в папку SSH.
 После исправления повтори проверку; при другой ошибке → HELP §12.
 sudo /usr/sbin/sshd -t # Убедиться, что ошибок больше нет; иначе остановись.
 Только если служба прежде была failed:
@@ -45,21 +47,34 @@ mkdir -p "$HOME/app" # Создать папку исходников своег
 git clone https://github.com/xtwze/examLinux.git "$HOME/app/examLinux" # Скачать проект; папка уже есть → HELP §9.
 cd "$HOME/app/examLinux" # Перейти к ExamApi.csproj и шаблонам конфигурации.
 dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish" # Собрать API без sudo; ошибка → HELP §5.
-sudo install -d -m 755 /var/www/app # Создать каталог размещения API.
-sudo cp -a "$HOME/exam-publish/." /var/www/app/ # Скопировать весь результат успешной сборки.
-sudo chown -R root:root /var/www/app # Передать файлы root, чтобы API не менял свою публикацию.
-sudo find /var/www/app -type d -exec chmod 755 {} + # Разрешить проход и чтение каталогов всем, запись только владельцу.
-sudo find /var/www/app -type f -exec chmod a=r,u+w {} + # Задать файлам чтение всем и запись владельцу (644).
-Ошибка доступа → HELP §1; точечные chmod → HELP §11.
+sudo mkdir -p /var/www/app # Создать папку опубликованного API.
+Если API уже установлен, сначала останови его:
+sudo systemctl stop examapi # Остановить старый API перед заменой файлов; при первой установке unit not found допустимо.
+sudo cp -r "$HOME/exam-publish/." /var/www/app/ # Скопировать ВСЮ публикацию вместе с настройками и зависимостями.
+sudo chmod -R 755 /var/www/app # Установить требуемые права 755.
 
-4. SYSTEMD — Ubuntu Bash (тот же обычный пользователь)
-sed "s/^User=YOUR_USER$/User=$(id -un)/" examapi.service | sudo tee /etc/systemd/system/examapi.service > /dev/null # Подставить свой логин и установить службу.
-cat /etc/systemd/system/examapi.service # Проверить User=свой_логин, пути /var/www/app и /usr/bin/dotnet; не root/YOUR_USER.
-sudo systemctl daemon-reload # Перечитать установленный unit.
-sudo systemctl enable --now examapi # Запустить API и включить его при загрузке.
-systemctl status examapi --no-pager # Проверить active (running); ошибка → HELP §2.
-curl -fS http://127.0.0.1:5000/api/health # Проверить API напрямую: JSON Healthy; при старте повторить через пару секунд.
-ps -o user,pid,args -p "$(systemctl show -p MainPID --value examapi)" # Проверить, что процесс работает от своего логина.
+4. СНАЧАЛА РУЧНОЙ ЗАПУСК, ПОТОМ СЛУЖБА — Ubuntu Bash
+cd /var/www/app # Перейти в папку опубликованного API.
+dotnet ExamApi.dll # Запустить API от своего пользователя и увидеть сообщение запуска.
+Оставь окно открытым. Ожидается Now listening on: http://127.0.0.1:5000.
+В другом терминале Ubuntu (или во втором SSH-окне):
+curl -fS http://127.0.0.1:5000/api/health # Получить JSON со статусом Healthy.
+Если нет ответа или программа закрылась — HELP §2; к службе пока не переходи.
+В первом окне нажми Ctrl+C: останови ручной API и дождись приглашения команд.
+cd "$HOME/app/examLinux" # Вернуться к шаблонам проекта.
+whoami # Узнать свой логин Ubuntu для строки User.
+sudo cp examapi.service /etc/systemd/system/examapi.service # Скопировать шаблон службы.
+sudo nano /etc/systemd/system/examapi.service # Открыть настройки службы.
+В nano замени ТОЛЬКО YOUR_USER в строке User=YOUR_USER на результат whoami.
+Например, если whoami показал a, напиши User=a. Не пиши root и не меняй пути.
+Сохранить: Ctrl+O, Enter. Выйти: Ctrl+X.
+sudo systemctl daemon-reload # Перечитать настройки службы.
+sudo systemctl enable examapi # Включить запуск API при загрузке Ubuntu.
+sudo systemctl restart examapi # Запустить API с установленными настройками.
+sleep 2 # Подождать две секунды после запуска.
+curl -fS http://127.0.0.1:5000/api/health # Проверить ответ Healthy.
+Если Connection refused, подожди ещё пару секунд и повтори curl один раз.
+Если Healthy не появился — HELP §2; не переходи к Nginx.
 
 5. NGINX — Ubuntu Bash (отдельная учебная VM с одним сайтом)
 sudo cp examapi.nginx.conf /etc/nginx/sites-available/examapi # Установить HTTP-прокси с порта 80 на 127.0.0.1:5000.
@@ -73,11 +88,11 @@ curl -fS http://127.0.0.1/api/products # Проверить список тов�
 curl -fS http://127.0.0.1/api/categories # Проверить список категорий через Nginx.
 
 6. WINDOWS — новое окно PowerShell на Windows, не внутри SSH
-$base = 'http://127.0.0.1:8080' # Адрес хоста: NAT переводит 8080 в порт 80 VM.
+$base = 'http://127.0.0.1:80' # Адрес хоста: NAT переводит 80 в порт 80 VM.
 Invoke-RestMethod "$base/api/health" # Проверить всю цепочку: ожидается Healthy.
 Invoke-RestMethod "$base/api/products" # Получить товары.
 Invoke-RestMethod "$base/api/categories" # Получить категории.
-Те же три URL можно открыть в браузере Windows. Не забудь :8080.
+Те же три URL можно открыть в браузере Windows. Порт 80 можно не писать в адресе.
 Ожидается JSON; / и /swagger в Production дают 404. Сбой только Windows → HELP §7.
 
 7. ФИНИШ — Ubuntu Bash
@@ -87,5 +102,5 @@ history # Показать команды, выполненные в этом и
 history -a # Сохранить команды этого сеанса в историю пользователя.
 history > "$HOME/exam-history.txt" # Сохранить копию для показа комиссии.
 На тренировке после перезагрузки повтори SSH и три запроса из Windows.
-Для защиты: systemd держит API от моего пользователя; root владеет файлами;
-Nginx :80 → API 127.0.0.1:5000; NAT Windows :8080 → VM :80. Данные в памяти.
+Для защиты: systemd держит API от моего пользователя; файлы находятся в /var/www/app;
+Nginx :80 → API 127.0.0.1:5000; NAT Windows :80 → VM :80. Данные в памяти.

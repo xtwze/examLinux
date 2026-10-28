@@ -13,7 +13,7 @@ GET /api/health возвращает status Healthy; корень / возвра
 appsettings.json задаёт Urls=http://127.0.0.1:5000.
 Swagger доступен только при ASPNETCORE_ENVIRONMENT=Development.
 Сборка: dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish".
-Копирование через sudo в /var/www/app. Каталоги 755, файлы 644, владелец root:root; API читает их от обычного пользователя Ubuntu.
+Копирование через sudo в /var/www/app. Права 755; API читает их от обычного пользователя Ubuntu.
 /etc/systemd/system/examapi.service:
   WorkingDirectory=/var/www/app
   ExecStart=/usr/bin/dotnet /var/www/app/ExamApi.dll
@@ -25,10 +25,10 @@ Swagger доступен только при ASPNETCORE_ENVIRONMENT=Development.
   listen 80;
   location / { proxy_pass http://127.0.0.1:5000; }
 Стандартный сайт Nginx отключён в этой отдельной учебной VM.
-Windows обращается к http://127.0.0.1:8080/api/health через правило
-VirtualBox NAT: TCP 127.0.0.1:8080 хоста → порт 80 гостя.
+Windows обращается к http://127.0.0.1:80/api/health через правило
+VirtualBox NAT: TCP 127.0.0.1:80 хоста → порт 80 гостя.
 Сначала проверять curl на 5000 внутри VM, затем 80 внутри VM,
-затем 8080 с Windows. Это позволяет отделить приложение, Nginx и сеть.
+затем 80 с Windows. Это позволяет отделить приложение, Nginx и сеть.
 Диагностика: systemctl status examapi --no-pager;
 sudo journalctl -u examapi -n 40 --no-pager; sudo nginx -t;
 sudo ss -ltnp; dotnet --list-runtimes; cat /etc/os-release.
@@ -38,7 +38,7 @@ id из ответа, не рассчитывать на id=4.
 Требуется показать history настоящих команд из интерактивного Bash.
 
 Отдельного пользователя создавать не надо. В репозитории User=YOUR_USER;
-перед установкой unit шаблон заменяется на результат id -un через sed.
+после копирования unit шаблон заменяется на результат whoami через nano.
 Нельзя просто копировать unit без подстановки имени. API не запускается от root.
 SSH под тем же обычным пользователем: ssh -p 2222 student@127.0.0.1;
-NAT 2222->22, 8080->80. CONFIG-EXPLAINED.txt объясняет строки конфигов.
+NAT 2222->22, 80->80. CONFIG-EXPLAINED.txt объясняет строки конфигов.

@@ -8,7 +8,7 @@
 На порт 5000 root не нужен. sudo используется вручную для настройки системы.
 Это простая модель для отдельной учебной VM; обычный пользователь имеет
 доступ к своим домашним файлам, это не изоляция приложения от учётной записи.
-Публикация root:root не позволяет обычному процессу менять свои DLL/config.
+В сценарии папка создаётся через sudo; API запускается обычным пользователем.
 
 examapi.nginx.conf (подключается внутри http штатного /etc/nginx/nginx.conf)
 
@@ -21,7 +21,7 @@ server {                              — начало описания HTTP-с�
                                         /api/... и query сохраняются.
         proxy_set_header Host $http_host;
                                       — передать исходный Host с портом.
-                                        При NAT из Windows это 127.0.0.1:8080.
+                                        При NAT из Windows это 127.0.0.1:80.
                                         API использует его в Location после
                                         POST; клиент получает рабочую ссылку.
     }                                 — конец location.
@@ -45,15 +45,15 @@ After=network.target                  — порядок старта после
                                         не проверяет наличие интернета.
 [Service]                             — как запускать процесс.
 User=YOUR_USER                        — шаблон имени обычного пользователя.
-                                        Перед установкой заменяем на id -un.
+                                        При установке заменяем через nano.
                                         systemd НЕ подставляет $USER и $HOME.
                                         Без Group берётся основная группа
                                         указанного пользователя.
 WorkingDirectory=/var/www/app         — рабочая папка; отсюда читается config.
 ExecStart=/usr/bin/dotnet /var/www/app/ExamApi.dll
                                       — dotnet запускает опубликованную DLL.
-                                        Type не задан: по умолчанию simple,
-                                        systemd следит за этим процессом.
+                                        Type по умолчанию simple:
+                                        systemd следит за процессом; готовность HTTP проверяется curl.
 Environment=ASPNETCORE_ENVIRONMENT=Production
                                       — рабочий режим, Swagger выключен.
 Restart=on-failure                    — перезапуск при аварийном завершении;
@@ -94,38 +94,11 @@ nginx -t — проверить весь включённый конфиг до 
 
 Команды файлов
 
-install -d -m 755 — создать каталог с правами 755 (это не установка API).
-cp -a source/. target/ — скопировать содержимое, включая скрытые файлы.
-chown -R root:root — назначить root владельцем и группой публикации.
-find ... -type d -exec chmod 755 {} + — права 755 всем каталогам публикации.
-find ... -type f -exec chmod a=r,u+w {} + — точно задать файлам 644:
-сначала чтение всем (a=r), затем запись владельцу (u+w).
-{} — найденные пути, + — передать их chmod группами.
-DLL читается интерпретатором dotnet; запускать apphost ./ExamApi не нужно.
-ln -sfn — создать/обновить символическую ссылку включённого сайта.
-rm -f .../sites-enabled/default — отключить стандартный сайт в учебной VM;
-сам файл sites-available/default сохраняется.
-
-Документация:
-https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_pass
-https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header
-https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html
-https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html
-https://docs.oracle.com/en/virtualization/virtualbox/7.2/user/networkingdetails.html
-https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install
-
-Установка unit с твоим именем:
-
-whoami и id -un — показывают имя текущего пользователя.
-test "$(id -u)" -ne 0 — проверяет, что его UID не 0 (root).
-sed "s/^User=YOUR_USER$/User=$(id -un)/" examapi.service
-— читает шаблон, заменяет ровно строку User=YOUR_USER на имя пользователя.
-$(id -un) выполняется обычной оболочкой ДО запуска sudo; ^ и $ означают
-начало и конец строки. Исходный файл репозитория не изменяется.
-| sudo tee /etc/systemd/system/examapi.service
-— передаёт результат команде tee, которая через sudo записывает unit в /etc.
-> /dev/null — скрывает повторный вывод tee; установленный файл проверяем cat.
-Именно tee работает от root, поэтому проблемы sudo echo ... > /etc/... нет.
-После установки в unit должна быть строка, например User=student,
-где student — фактический результат whoami. YOUR_USER не должен оставаться.
-Нельзя ставить User=root или запускать шаг под sudo su.
+mkdir -p — создать папку, если её ещё нет.
+cp -r source/. target/ — скопировать всё содержимое папки.
+chmod -R 755 — задать владельцу все права, остальным чтение и выполнение.
+ln -sfn — включить сайт Nginx ссылкой.
+rm -f .../sites-enabled/default — отключить стандартный сайт учебной VM.
+nano — открыть файл; Ctrl+O и Enter сохраняют, Ctrl+X закрывает.
+User=YOUR_USER заменяем вручную на логин из whoami.
+Служба сама не подставляет имя вошедшего пользователя.

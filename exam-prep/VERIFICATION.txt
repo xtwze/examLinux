@@ -1,34 +1,36 @@
-ПРОВЕРКА ПАКЕТА — 28.10.2026
-База: origin/main ead41710e8f7783772fff7156ef3d2e9841a2417.
-Изменены только инструкции; API, проект, Nginx и unit не менялись.
-START: 240 → 91 строка; HELP: 304 → 116 строк.
+ПРОВЕРКА 28.10.2026
+База до правок: f0a1bb2ae44d43c37744951a1d6f742bee9d09c5.
+Изменены инструкции. Код API, csproj, appsettings, unit и Nginx не менялись.
 
-Статически проверено:
-— bash -n для 45 команд START и 48 команд HELP; у каждой есть комментарий.
-— Все ссылки START на номера HELP существуют; JSON корректен.
-— Подстановка User, пути публикации и владельцы согласованы с конфигами.
-— Просмотр diff и git diff --check без ошибок.
+Что известно о сбое пользователя:
+На снимке active показан через 2 мс после старта. Затем curl не находит
+слушателя, ps не получает действующий PID. Журнала этой VM нет.
+Точная причина исчезновения процесса НЕ установлена; по снимку её узнать нельзя.
+Неверный User, отсутствующие файлы или runtime нельзя объявлять причиной без лога.
 
-Изолированная Linux-проверка: Ubuntu 22.04 и 24.04, ARM64.
-Оба прогона завершились с кодом 0; SDK из apt — 8.0.132.
-— Установка git, curl, nginx, openssh-server, dotnet-sdk-8.0 из apt.
-— dotnet publish от examstudent, без root, успешное восстановление NuGet.
-— /var/www/app: root:root; каталоги 755, DLL 644; пользователь читает DLL,
-  но не может писать в неё. chmod a=r,u+w задаёт точный режим 644.
-— Подстановка User=examstudent; systemd-analyze verify успешно.
-— nginx -t успешно; API в Production работает от examstudent.
-— Шесть успешных GET: health/products/categories на 5000 и через Nginx :80.
-— Четыре ожидаемых 404: / и /swagger на обоих портах.
-— SSH: sshd -t, запуск слушателя, ED25519 fingerprint по сети совпадает
-  с локальным; повторный ssh-keygen -A не меняет существующие ключи.
-— chmod u-r → g+w → a-r: 644 → 244 → 264 → 220.
+Фактически выполнено сейчас:
+Ubuntu 24.04 ARM64 в изолированном Linux-контейнере с systemd как PID 1.
+SDK 8 установлен через apt. Сборка Release выполнена обычным examstudent.
+Полная публикация скопирована в /var/www/app; папка и DLL имеют права 755.
+Ручной запуск: рабочая папка /var/www/app, пользователь examstudent,
+команда dotnet ExamApi.dll. Production, слушает 127.0.0.1:5000, health Healthy.
+Ручной процесс остановлен перед запуском службы.
+Оригинальный unit с единственной заменой YOUR_USER на тестовый логин:
+systemd-analyze verify, daemon-reload, enable, restart — успешно.
+User=examstudent, ActiveState=active, SubState=running, NRestarts=0.
+Первый мгновенный curl воспроизвёл Connection refused, повтор через секунду
+успешен. Это задержка готовности, но не доказательство причины сбоя чужой VM.
+Nginx: оригинальный конфиг, nginx -t, enable --now, reload — успешно.
+Шесть GET health/products/categories на 5000 и 80 — HTTP 200.
+SSH: ssh-keygen -A, каталог /run/sshd 755, sshd -t, enable --now ssh — успешно.
 
-Ограничения:
-— systemd не PID 1: проверены unit и фактический запуск API, но не
-  systemctl enable/start/reset-failed и не автозагрузка после reboot.
-— Windows PowerShell, парольный SSH-вход, known_hosts Windows,
-  VirtualBox NAT и firewall конкретной VM не проверялись.
-— PowerShell-команды просмотрены; PowerShell здесь не установлен.
-— Полный CRUD в этом пакете не повторялся: бизнес-логика не менялась.
-— Контейнеры использовались только для проверки; Docker не нужен для сдачи
-  и не добавлен в проект. Исторические подробные логи доступны в git.
+Границы:
+Windows, VirtualBox NAT 80→80 и 2222→22, known_hosts и перезагрузка
+пользовательской VM здесь не проверялись. Переустановка Ubuntu не нужна.
+Бизнес-логика не менялась; полный CRUD повторно не проверялся.
+
+История:
+INSTRUCTION-HISTORY.md содержит ссылки по полным SHA на все доступные
+исторические версии START/HELP и на первоначальный README.
+Исторические AUDIT.txt и прежние отчёты остаются историческими материалами;
+их старые порты и права не заменяют текущий START.

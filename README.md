@@ -26,63 +26,19 @@
 | [AI-CONTEXT.txt](exam-prep/AI-CONTEXT.txt) | Готовый контекст для чата |
 | [ASK-LOCAL.ps1](exam-prep/ASK-LOCAL.ps1) | Необязательный клиент локальной Ollama на Windows |
 
-## Основные команды
+## Развёртывание
 
-Установка и клонирование в фиксированную папку:
+Вводи команды по одной из [START](exam-prep/00-START.txt).
+Исходники: `/home/{user}/app/examLinux`. Сборка Release копируется целиком
+в `/var/www/app`, права 755. Сначала запускаем `dotnet ExamApi.dll` вручную
+от обычного пользователя, затем настраиваем systemd с тем же пользователем.
+Имя в `User=` меняется вручную через nano.
 
-```bash
-sudo apt update
-sudo apt install -y git curl nginx dotnet-sdk-8.0
-mkdir -p "$HOME/app"
-git clone https://github.com/xtwze/examLinux.git "$HOME/app/examLinux"
-cd "$HOME/app/examLinux"
-```
+Сеть: Windows `127.0.0.1:80` → NAT → Nginx `:80` → API `127.0.0.1:5000`.
+SSH: Windows `127.0.0.1:2222` → Ubuntu `:22`. Порт 80 на Windows должен быть свободен.
 
-Если репозиторий уже клонирован в `~/app/examLinux`, повторять `git clone`
-не нужно. Все дальнейшие команды используют этот точный путь.
-
-Сборка выполняется обычным пользователем, копирование — через `sudo`:
-
-```bash
-dotnet publish ExamApi.csproj -c Release -o "$HOME/exam-publish"
-sudo install -d -m 755 /var/www/app
-sudo cp -a "$HOME/exam-publish/." /var/www/app/
-sudo chown -R root:root /var/www/app
-sudo find /var/www/app -type d -exec chmod 755 {} +
-sudo find /var/www/app -type f -exec chmod 644 {} +
-```
-
-Далее выполни шаги systemd и Nginx из шпаргалки. Готовые конфиги находятся
-в корне: `examapi.service` и `examapi.nginx.conf`.
-Шаг 4 подставляет имя твоего обычного пользователя Ubuntu в `User=`:
-от него systemd запускает API. Отдельную учётную запись создавать не нужно.
-В шаблоне unit стоит `User=YOUR_USER`; установи его через команду `sed`
-из шпаргалки, чтобы заменить шаблон своим именем. `root` владеет публикацией,
-а обычный пользователь читает файлы 644 и проходит в каталоги 755.
-API слушает только `127.0.0.1:5000`; снаружи доступен Nginx на 80.
-
-Схема запроса при NAT VirtualBox:
-
-```text
-Windows 127.0.0.1:8080 → Linux Nginx :80 → ExamApi :5000
-```
-
-Создай правило проброса TCP с IP хоста `127.0.0.1`, портом хоста `8080`
-и портом гостя `80`. IP гостя при стандартном DHCP оставь пустым.
-Для SSH добавь второе правило TCP `127.0.0.1:2222 → гостевой :22`,
-установи `openssh-server` и включи `ssh` по шагу 2 шпаргалки.
-В Windows: `ssh -p 2222 student@127.0.0.1`, где `student` — имя из `whoami`
-в Ubuntu. Для SSH и запуска API используется один и тот же обычный пользователь Ubuntu.
-Диагностика HTTP и SSH через NAT — [HELP.txt](exam-prep/HELP.txt), пункты 7 и 12.
-
-После развёртывания проверь в PowerShell:
-
-```powershell
-$base = 'http://127.0.0.1:8080'
-Invoke-RestMethod "$base/api/health"
-Invoke-RestMethod "$base/api/products"
-Invoke-RestMethod "$base/api/categories"
-```
+[Все предыдущие версии инструкций по конкретным SHA](exam-prep/INSTRUCTION-HISTORY.md),
+включая первую инструкцию README и недавнюю отменённую версию.
 
 ## Маршруты
 

@@ -7,18 +7,33 @@ HELP — ОТКРОЙ ТОЛЬКО НУЖНЫЙ НОМЕР ПРИ ОШИБКЕ
 Проверка:
 ls -l "$HOME/exam-publish/ExamApi.dll" /var/www/app/ExamApi.dll # Проверить исходную и установленную DLL.
 
-2. examapi failed / HTTP 502 / порт 5000 не отвечает
-Причина: неверный User, путь, runtime или порт занят.
-Проверка причины:
-sudo journalctl -u examapi -n 30 --no-pager # Прочитать ошибку запуска API.
-grep '^User=' /etc/systemd/system/examapi.service # Проверить свой логин вместо YOUR_USER (217/USER).
-dotnet --list-runtimes # Нужен Microsoft.AspNetCore.App 8.0.x из SDK 8.
-sudo ss -ltnp 'sport = :5000' # Найти процесс на порту; свой dotnet run останови Ctrl+C.
-Исправление: повтори установку unit из START §4; при ошибке доступа — §1.
-sudo systemctl daemon-reload # Прочитать исправленный unit.
-sudo systemctl reset-failed examapi # Сбросить ограничение стартов после устранения причины.
+2. API не отвечает / Connection refused / служба перезапускается
+Connection refused означает: сейчас на этом адресе нет слушающего API.
+active сразу после старта ещё не доказывает готовность HTTP.
+Ошибка ps с пустым PID — следствие отсутствия процесса, а не причина сбоя.
+Сначала прочитай настоящую ошибку:
+sudo journalctl -u examapi -n 50 --no-pager # Показать последние сообщения API.
+sudo systemctl cat examapi # Показать установленную службу и дополнительные настройки.
+sudo systemctl stop examapi # Остановить перезапуски перед ручной проверкой.
+cd /var/www/app # Перейти к установленным файлам.
+ls -l # Проверить DLL, appsettings.json, ExamApi.deps.json и ExamApi.runtimeconfig.json.
+dotnet ExamApi.dll # Увидеть ошибку непосредственно в терминале.
+Если появился Now listening — проверь curl из второго окна, затем останови Ctrl+C.
+Разбирай именно сообщение, а не меняй настройки наугад:
+— DLL/deps/runtimeconfig не найдены: повтори успешный publish и копирование ВСЕЙ папки START §3.
+— You must install or update .NET: проверь runtime следующей командой.
+dotnet --list-runtimes # Найти Microsoft.AspNetCore.App 8.0.x и Microsoft.NETCore.App 8.0.x.
+— Address already in use: останови свой предыдущий ручной запуск Ctrl+C.
+— 217/USER: через nano исправь User на свой логин из whoami, без кавычек.
+— 200/CHDIR или 203/EXEC: сверь WorkingDirectory и ExecStart с шаблоном в репозитории.
+— Permission denied: повтори chmod из START §3.
+— Ручной запуск работает, служба нет: сравни User, пути и дополнительные настройки из systemctl cat.
+После исправления причины:
+sudo systemctl daemon-reload # Перечитать исправленную службу.
+sudo systemctl reset-failed examapi # Снять ограничение повторных запусков.
 sudo systemctl restart examapi # Запустить исправленную службу.
-curl -fS http://127.0.0.1:5000/api/health # Проверить Healthy; при старте повторить через пару секунд.
+sleep 2 # Подождать две секунды после запуска.
+curl -fS http://127.0.0.1:5000/api/health # Проверить ответ Healthy.
 
 3. 5000 отвечает, порт 80 нет / Welcome to nginx
 Причина: ошибка конфига или включён стандартный сайт.
@@ -57,15 +72,17 @@ curl -fS http://127.0.0.1/api/health # Проверить реальный ма�
 
 7. Ubuntu отвечает, Windows не отвечает
 Причина: не сохранён NAT, VM выключена, порт занят или UFW блокирует 80.
-Исправление: проверь оба OK из START §0 и адрес с :8080.
+Исправление: проверь оба OK из START §0 и адрес http://127.0.0.1.
+Если Windows не даёт сохранить NAT на 80, освободи порт 80 (останови использующий его сайт/программу).
+Не меняй гостевой порт: Nginx работает на 80.
 Windows PowerShell:
-Test-NetConnection 127.0.0.1 -Port 8080 # Проверить доступность проброшенного HTTP-порта.
+Test-NetConnection 127.0.0.1 -Port 80 # Проверить доступность проброшенного HTTP-порта.
 Ubuntu Bash:
 sudo ufw status # Проверить, активен ли firewall.
 Только если active:
 sudo ufw allow 80/tcp # Разрешить вход к Nginx, не открывая внутренний 5000.
 Windows PowerShell:
-Invoke-RestMethod 'http://127.0.0.1:8080/api/health' # Проверить Healthy после исправления.
+Invoke-RestMethod 'http://127.0.0.1:80/api/health' # Проверить Healthy после исправления.
 
 8. Нужно обновить уже установленный API
 Причина: старые файлы публикации. Сначала успешно повтори publish из START §3.
